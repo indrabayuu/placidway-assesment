@@ -2,7 +2,10 @@ import { expect, test } from '@playwright/test';
 
 const now = '2026-10-21T08:00:00.000Z';
 
-test('secret login, Arabic response and terminal stream handling', async ({ page }) => {
+test('secret login, Arabic response and streaming without crypto.randomUUID', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window.crypto, 'randomUUID', { value: undefined, configurable: true });
+  });
   let authenticated = false;
   let eventStreamRequests = 0;
   const eventStreamUrls: string[] = [];
@@ -36,7 +39,8 @@ test('secret login, Arabic response and terminal stream handling', async ({ page
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ready: true, version: 'smoke', updated_at: now, source_count: 2, chunk_count: 6, price_count: 0, refresh_running: false, last_error: null }) });
   });
   await page.route('**/api/conversations/conversation-1/runs', async (route) => {
-    const body = route.request().postDataJSON() as { message: string; response_language: string };
+    const body = route.request().postDataJSON() as { message: string; response_language: string; client_message_id: string };
+    expect(body.client_message_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     submittedLanguage = body.response_language;
     submittedMessage = body.message;
     await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: 'run-1', conversation_id: 'conversation-1', status: 'running', created_at: now, error: null, events_url: '/api/runs/run-1/events' }) });
@@ -72,6 +76,7 @@ test('secret login, Arabic response and terminal stream handling', async ({ page
   });
 
   await page.goto('/');
+  expect(await page.evaluate(() => typeof window.crypto.randomUUID)).toBe('undefined');
   await page.getByLabel('Access secret').fill('wrong-secret');
   await page.getByRole('button', { name: 'Continue securely' }).click();
   await expect(page.getByRole('alert')).toContainText('not recognized');

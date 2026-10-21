@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { createUuid } from '@/lib/uuid';
 import {
   Activity as ActivityIcon,
   ArrowDown,
@@ -560,7 +561,7 @@ function App() {
         conversationId = created.id;
         setConversations((items) => [created, ...items.filter((item) => item.id !== created.id)]);
       }
-      const clientMessageId = crypto.randomUUID();
+      const clientMessageId = createUuid();
       clientMessageIdRef.current = clientMessageId;
       shouldAutoScrollRef.current = true;
       setShowScrollButton(false);
