@@ -84,6 +84,8 @@ An initial deployment smoke assertion expected the missing-recovery response's o
 
 The server has 2 GB RAM and 2 GB swap; these checks ran without a concurrent image build or load test. This does not replace the 4 GB deployment recommendation. The public demo currently uses HTTP, and seven-day continuous availability has not yet elapsed. GHCR packages were initially private and deployed using temporary authenticated pulls; changing package visibility to Public is still a one-time GitHub settings step.
 
+Release `v1.0.1` fixes message submission on public HTTP origins where `crypto.randomUUID()` is unavailable. The original live browser check used localhost through an SSH tunnel, which browsers treat as a secure context. A regression test now disables that API and verifies a valid version-4 message UUID; all eight browser smoke tests and the production build passed. A direct browser check at `http://43.173.33.81` then confirmed an insecure context, successful UUID submission and a sourced price answer without browser errors. Only that test's conversation was removed; existing user history, database credentials, corpus and document vectors were preserved.
+
 ## Reproduce the checks
 
 For host-based evaluation, follow the [README setup](../README.md), install `uv sync --extra eval` in `apps/agent/`, and configure a reachable PostgreSQL/pgvector database plus generation and judge credentials. Use the audited corpus matching the labels; if sources changed, audit the snapshots and labels before regenerating bindings.
