@@ -12,6 +12,7 @@ node_modules/
 dist/
 data/
 reports/
+.deployment/
 docs/contract/
 docs/results/
 playwright-report/

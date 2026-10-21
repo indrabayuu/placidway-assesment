@@ -10,9 +10,9 @@ A chatbot for the AI Automation Engineer assessment that answers from the seven 
 | Answers to the eight assessment questions | [Recorded chatbot answers](docs/assessment-answers.md) |
 | Known limitations and improvements with another week | [Half-page write-up](docs/limitations.md) |
 | Evaluation method, results and remaining failures | [Evaluation summary](docs/evaluation.md) |
-| Public demo | **Pending: add the deployed HTTPS URL before submission.** |
+| Public demo | [Open the deployed chatbot](http://43.173.33.81) |
 
-Public deployment and seven-day availability have not been verified in the recorded results. Before submission, provision the public URL, provide the reviewer login secret privately, and keep the application and generation provider available for at least seven days after submission.
+The public demo is deployed at **http://43.173.33.81**. HTTPS is not configured. Provide the reviewer login secret privately and keep the application and generation provider available for at least seven days after submission; the full seven-day period has not yet been verified.
 
 ## Run locally
 
@@ -135,6 +135,8 @@ podman compose -f compose.deploy.yaml up -d
 ```
 
 The deployment file keeps automatic refresh behind the `refresh` profile, so startup can reuse restored source text and vectors without ingestion. The owner refresh control remains available. To enable the periodic worker later, run `podman compose -f compose.deploy.yaml --profile refresh up -d refresh`. The query embedding model downloads into a new cache on first use; restoring document vectors does not require recomputing them. Use `sudo podman compose` for a rootful installation, including a server binding privileged port `80`.
+
+The current server runs release `v1.0.0` from `/home/ubuntu/placidway-assesment` using rootful Podman. `placidway.service` is enabled for startup after reboot. Only PostgreSQL was transferred: its seven active sources, 276 document vectors and 59 price records were restored unchanged. Conversation, run, checkpoint and session contents were excluded and deployment test history was cleared afterwards. Automatic refresh remains disabled. Runtime secrets are stored in the server's mode-`0600` `.env`; the owner/client login secrets match the local configuration. Temporary registry authentication was removed after pulling the images.
 
 ## Development and checks
 

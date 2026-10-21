@@ -64,6 +64,26 @@ Source extraction excludes unnamed price rows and leaves ambiguous-currency amou
 
 A concurrent evaluation-image build and live inference exhausted the 2 GB test VM and restarted the API. Later quiescent browser and restart checks passed. Deployment guidance now calls for at least 4 GB RAM and building before reviewer traffic. Local Compose checks do not verify a public HTTPS URL or the assessment's seven-day availability requirement. Further limitations and priorities are in the [half-page write-up](limitations.md).
 
+## Deployment verification
+
+Release `v1.0.0` was built by the tag-triggered [GHCR publishing workflow](https://github.com/indrabayuu/placidway-assesment/actions/runs/39625510710) and deployed on an amd64 server at [http://43.173.33.81](http://43.173.33.81). Both image publishing jobs passed. A logical PostgreSQL restore retained the active Compose corpus `ad0defbc-d49d-4294-a553-1ed89220881d`, seven sources, 276 chunks and 59 price records. The stored-vector fingerprint matched the local database before and after testing, and the ingestion-run count stayed unchanged. Source snapshots and the local model cache were not transferred; the query model downloaded into a new server cache. Automatic refresh was not started.
+
+| Live deployment check | Result |
+| --- | --- |
+| Public frontend, liveness and readiness endpoints | Passed |
+| External PostgreSQL connection on port 5432 | Passed |
+| Real-provider cost answer, citations, idempotency and validation before streaming | Passed |
+| Persisted follow-up about missing recovery time | Passed; the answer distinguished recovery from programme duration and offered a quote |
+| Owner/client history and stream isolation; owner-only refresh | Passed |
+| Browser integration: Arabic RTL, citations, activity panel, history reopening and mobile layout | 1 passed |
+| API/web restart and completed-history persistence | Passed |
+| System service enabled for startup | Verified enabled and active; a full machine reboot was not tested |
+| Conversation, session and checkpoint cleanup after testing | Verified empty on target |
+
+An initial deployment smoke assertion expected the missing-recovery response's outcome to be exactly `unknown`; the observed answer was correctly worded but labeled `partial`. That ad hoc check was corrected to allow either outcome while requiring explicit missing-recovery wording and a quote/contact link. No application code, assessment labels, benchmark thresholds or historical scores changed. The full answer benchmark was not rerun for this deployment.
+
+The server has 2 GB RAM and 2 GB swap; these checks ran without a concurrent image build or load test. This does not replace the 4 GB deployment recommendation. The public demo currently uses HTTP, and seven-day continuous availability has not yet elapsed. GHCR packages were initially private and deployed using temporary authenticated pulls; changing package visibility to Public is still a one-time GitHub settings step.
+
 ## Reproduce the checks
 
 For host-based evaluation, follow the [README setup](../README.md), install `uv sync --extra eval` in `apps/agent/`, and configure a reachable PostgreSQL/pgvector database plus generation and judge credentials. Use the audited corpus matching the labels; if sources changed, audit the snapshots and labels before regenerating bindings.
