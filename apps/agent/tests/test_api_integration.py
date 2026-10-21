@@ -52,10 +52,16 @@ async def test_auth_isolation_idempotent_stream_replay_and_checkpoint_resume():
             assert (
                 await owner.post("/api/conversations", json={}, headers={"Sec-Fetch-Site": "cross-site"})
             ).status_code == 403
-            conversation = (await owner.post("/api/conversations", json={})).json()["id"]
+            created = (await owner.post("/api/conversations", json={"response_language": "ar"})).json()
+            conversation = created["id"]
+            assert created["response_language"] == "auto"
             try:
                 assert (await client.get(f"/api/conversations/{conversation}/messages")).status_code == 404
-                payload = {"message": "Outpatient adenocarcinoma price?", "client_message_id": str(uuid4())}
+                payload = {
+                    "message": "Outpatient adenocarcinoma price?",
+                    "client_message_id": str(uuid4()),
+                    "response_language": "ar",
+                }
                 endpoint = f"/api/conversations/{conversation}/runs"
                 response = await owner.post(endpoint, json=payload)
                 assert response.status_code == 202
@@ -67,6 +73,12 @@ async def test_auth_isolation_idempotent_stream_replay_and_checkpoint_resume():
                         break
                     await asyncio.sleep(0.02)
                 assert status == "completed"
+                persisted = await db.one("SELECT response_language FROM runs WHERE id=%s", (run["id"],))
+                assert persisted["response_language"] == "en"
+                persisted = await db.one(
+                    "SELECT response_language FROM conversations WHERE id=%s", (conversation,)
+                )
+                assert persisted["response_language"] == "en"
                 assert (await client.get(run["events_url"])).status_code == 404
                 stream = (await owner.get(run["events_url"])).text
                 assert "event: stage" in stream and "event: answer.complete" in stream
@@ -79,6 +91,7 @@ async def test_auth_isolation_idempotent_stream_replay_and_checkpoint_resume():
                 restored = Workflow(db, PriceRetriever(), generator, AsyncPostgresSaver(db.pool))
                 history = await restored.history(conversation)
                 assert len(history) == 2 and "USD 18,995" in history[-1]["content"]
+                assert history[-1]["response_language"] == "en"
                 assert "diagnostics" not in json.dumps(history)
                 # A second browser authenticated to the same account restores the same history.
                 async with httpx.AsyncClient(transport=transport, base_url="http://test") as second_browser:

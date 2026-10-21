@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from placidway.llm import CALLS, StructuredOutputError
+from placidway.localization import localize
 from placidway.models import (
     Answer,
     AnswerBlock,
@@ -294,7 +295,11 @@ class Workflow:
         async def resolve(state):
             await emit("resolve", "Understanding your question and conversation context")
             history = [
-                {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
+                {
+                    "role": "user" if isinstance(m, HumanMessage) else "assistant",
+                    "content": m.content,
+                    "response_language": m.additional_kwargs.get("response_language"),
+                }
                 for m in state.get("messages", [])[-8:]
             ]
             request = await self.generator.call(
@@ -303,21 +308,31 @@ class Workflow:
                 {
                     "question": state["input"],
                     "history": history,
-                    "response_language": state["response_language"],
                 },
                 repair_budget,
             )
-            request.response_language = state["response_language"]
             user_context = (
                 " ".join(item["content"] for item in history if item["role"] == "user") + " " + state["input"]
             )
             # A resolver may resolve references, but must not invent user constraints
             # from general knowledge (e.g. assuming Ayurveda means India/inpatient).
-            if request.country and request.country.lower() not in user_context.lower():
+            country_mentioned = (
+                request.country_mention and request.country_mention.casefold() in user_context.casefold()
+            )
+            if (
+                request.country
+                and request.country.lower() not in user_context.lower()
+                and not country_mentioned
+            ):
                 request.country = ""
             programme = request.programme.lower().replace("-", "")
-            if programme in ("inpatient", "outpatient") and programme not in user_context.lower().replace(
-                "-", ""
+            programme_mentioned = (
+                request.programme_mention and request.programme_mention.casefold() in user_context.casefold()
+            )
+            if (
+                programme in ("inpatient", "outpatient")
+                and programme not in user_context.lower().replace("-", "")
+                and not programme_mentioned
             ):
                 request.programme = ""
             # Missing website prices need a quote fallback, even for unsupported treatments.
@@ -361,8 +376,7 @@ class Workflow:
             ):
                 request.treatment = TREATMENTS[named_source]
                 request.intent = "inclusions" if re.search(r"includ", state["input"], re.I) else "general"
-                request.query = state["input"]
-            return {"request": request.model_dump()}
+            return {"request": request.model_dump(), "response_language": request.response_language}
 
         async def retrieve(state):
             await emit("retrieve", "Finding relevant source passages and price records")
@@ -549,7 +563,7 @@ class Workflow:
                             "en": "The requested service is listed as an excluded or optional additional charge and is not included in the base programme.",
                             "es": "El servicio solicitado figura como un cargo adicional excluido u opcional y no está incluido en el programa base.",
                             "ar": "الخدمة المطلوبة مدرجة كرسوم إضافية مستثناة أو اختيارية وليست مشمولة في البرنامج الأساسي.",
-                        }[state["response_language"]]
+                        }["en"]
                         return {
                             "deterministic_price": True,
                             "draft": AnswerDraft(
@@ -597,7 +611,7 @@ class Workflow:
                         "en": "This is not a free programme. Major surgery is listed among excluded services and is not included in the base programme.",
                         "es": "Este programa no es gratuito. La cirugía mayor figura entre los servicios excluidos y no está incluida en el programa base.",
                         "ar": "هذا البرنامج ليس مجانيًا. الجراحة الكبرى مدرجة ضمن الخدمات المستثناة وليست مشمولة في البرنامج الأساسي.",
-                    }[state["response_language"]]
+                    }["en"]
                     return {
                         "deterministic_price": True,
                         "draft": AnswerDraft(
@@ -656,7 +670,7 @@ class Workflow:
                 {
                     "question": state["input"],
                     "request": state["request"],
-                    "response_language": state["response_language"],
+                    "response_language": "en",
                     "evidence": presented,
                     "price_facts": prices,
                     "coverage": state.get("coverage", {}),
@@ -683,13 +697,11 @@ class Workflow:
             prices = [PriceFact.model_validate(f) for f in state["prices"]]
             request = ResolvedRequest.model_validate(state["request"])
             issues = validate_draft(candidate, evidence, prices, request)
-            text, citations = (
-                ("", []) if issues else render(candidate, evidence, prices, state["response_language"])
-            )
+            text, citations = ("", []) if issues else render(candidate, evidence, prices, "en")
             if issues:
                 candidate = AnswerDraft(outcome="unknown", offer_quote=True)
                 text, citations = "", []
-            words = TEXT[state["response_language"]]
+            words = TEXT["en"]
             if not text:
                 text = words.get(candidate.outcome, words["unknown"])
                 details = ", ".join(
@@ -704,7 +716,7 @@ class Workflow:
                             "en": "I couldn't find the requested details for: ",
                             "es": "No encontré los detalles solicitados para: ",
                             "ar": "لم أجد التفاصيل المطلوبة بخصوص: ",
-                        }[state["response_language"]]
+                        }["en"]
                         + details
                         + "."
                     )
@@ -734,7 +746,7 @@ class Workflow:
                         "en": "The approved pages do not specify a recovery time. Programme duration and follow-up timing do not establish how long recovery takes.",
                         "es": "Las páginas autorizadas no especifican el tiempo de recuperación. La duración del programa y el momento del seguimiento no determinan cuánto tarda la recuperación.",
                         "ar": "لا تحدد الصفحات المعتمدة مدة التعافي. مدة البرنامج وموعد المتابعة لا يحددان المدة اللازمة للتعافي.",
-                    }[state["response_language"]]
+                    }["en"]
                 )
             if (
                 candidate.outcome in ("unknown", "partial")
@@ -751,7 +763,7 @@ class Workflow:
                         "en": "Three months refers to the follow-up consultation, not a recovery estimate.",
                         "es": "Los tres meses se refieren a la consulta de seguimiento, no a una estimación de recuperación.",
                         "ar": "تشير الأشهر الثلاثة إلى استشارة المتابعة، وليس إلى تقدير مدة التعافي.",
-                    }[state["response_language"]]
+                    }["en"]
                     + extra_citation(matching)
                 )
             if candidate.offer_quote or candidate.outcome in ("unknown", "partial"):
@@ -772,7 +784,7 @@ class Workflow:
                             "en": "The exact clinic package can vary; confirm the inclusions in writing.",
                             "es": "El paquete exacto puede variar según la clínica; confirme las inclusiones por escrito.",
                             "ar": "قد تختلف الباقة المحددة حسب العيادة؛ يرجى تأكيد المشمولات كتابيًا.",
-                        }[state["response_language"]]
+                        }["en"]
                         + extra_citation(varying)
                     )
             if candidate.blocks and state.get("deterministic_price", False):
@@ -789,7 +801,7 @@ class Workflow:
                             "en": "The amount in your question is not the documented price for this programme or procedure.",
                             "es": "El importe de su pregunta no es el precio documentado de este programa o procedimiento.",
                             "ar": "المبلغ المذكور في سؤالك ليس السعر الموثق لهذا البرنامج أو الإجراء.",
-                        }[state["response_language"]]
+                        }["en"]
                     )
             if (
                 request.intent == "comparison"
@@ -802,7 +814,7 @@ class Workflow:
                         "en": "The approved pages do not establish a directly comparable programme for every requested country. These are documented listings; scope, units, and inclusions can differ, so I cannot determine a reliable like-for-like cheaper option.",
                         "es": "Las páginas autorizadas no establecen un programa directamente comparable para todos los países solicitados. Estos son precios publicados; el alcance, las unidades y las inclusiones pueden diferir, por lo que no puedo determinar qué opción equivalente es más económica.",
                         "ar": "لا تثبت الصفحات المعتمدة وجود برنامج قابل للمقارنة مباشرة في كل بلد مطلوب. هذه أسعار منشورة وقد يختلف النطاق والوحدات والمشمولات، لذلك لا يمكنني تحديد الخيار الأرخص على أساس مقارنة متكافئة.",
-                    }[state["response_language"]]
+                    }["en"]
                 )
                 documented = {
                     fact.country
@@ -822,7 +834,7 @@ class Workflow:
                             "en": "No equivalent programme was found in the approved content for: ",
                             "es": "No se encontró un programa equivalente en el contenido autorizado para: ",
                             "ar": "لم يتم العثور على برنامج مكافئ في المحتوى المعتمد للبلدان التالية: ",
-                        }[state["response_language"]]
+                        }["en"]
                         + ", ".join(missing)
                         + "."
                     )
@@ -837,7 +849,7 @@ class Workflow:
                     VERIFY,
                     {
                         "question": state["input"],
-                        "response_language": state["response_language"],
+                        "response_language": "en",
                         "candidate": text,
                         "outcome": candidate.outcome,
                         "evidence": state["evidence"],
@@ -861,7 +873,7 @@ class Workflow:
                                 "en": "I couldn't find the requested details for: ",
                                 "es": "No encontré los detalles solicitados para: ",
                                 "ar": "لم أجد التفاصيل المطلوبة بخصوص: ",
-                            }[state["response_language"]]
+                            }["en"]
                             + details
                             + "."
                         )
@@ -894,7 +906,7 @@ class Workflow:
 
         async def boundary(state):
             outcome = state["request"]["intent"]
-            words = TEXT[state["response_language"]]
+            words = TEXT["en"]
             if outcome == "unsupported_action" and re.search(r"invent|ignore.*rules", state["input"], re.I):
                 outcome = "unknown"
             text = words[outcome]
@@ -903,13 +915,13 @@ class Workflow:
                     "en": "I cannot guarantee remission or cure from testimonials. Please discuss individual prognosis and treatment suitability with your treating doctor and the clinic's medical team.",
                     "es": "No puedo garantizar la remisión ni la curación a partir de testimonios. Consulte el pronóstico individual y la idoneidad del tratamiento con su médico y el equipo de la clínica.",
                     "ar": "لا يمكنني ضمان الشفاء أو زوال المرض استنادًا إلى الشهادات. يرجى مناقشة التوقعات الفردية وملاءمة العلاج مع طبيبك وفريق العيادة الطبي.",
-                }[state["response_language"]]
+                }["en"]
             if outcome == "unsupported_action" and re.search(r"send|records|pay", state["input"], re.I):
                 text = {
                     "en": "I can't send medical records or process payments. Please contact PlacidWay or the clinic directly for assistance.",
                     "es": "No puedo enviar expedientes médicos ni procesar pagos. Contacte directamente con PlacidWay o la clínica para obtener ayuda.",
                     "ar": "لا يمكنني إرسال السجلات الطبية أو معالجة المدفوعات. يرجى التواصل مباشرة مع PlacidWay أو العيادة للمساعدة.",
-                }[state["response_language"]]
+                }["en"]
             if outcome == "out_of_scope" and re.search(
                 r"exchange rate|convert|currency", state["input"], re.I
             ):
@@ -919,7 +931,7 @@ class Workflow:
                         "en": "I don't have live exchange rates and cannot provide a currency conversion from these sources.",
                         "es": "No dispongo de tipos de cambio en tiempo real y no puedo convertir divisas con estas fuentes.",
                         "ar": "لا تتوفر لدي أسعار صرف مباشرة ولا يمكنني تحويل العملات استنادًا إلى هذه المصادر.",
-                    }[state["response_language"]]
+                    }["en"]
                 )
             if outcome in ("medical_referral", "unsupported_action", "unknown"):
                 text += "\n\n" + words["quote"].format(url=QUOTE_URL)
@@ -933,7 +945,12 @@ class Workflow:
             }
 
         async def finalize(state):
-            answer = state["answer"]
+            answer = {**state["answer"], "diagnostics": dict(state["answer"].get("diagnostics", {}))}
+            canonical = answer["content"]
+            answer["content"] = await localize(
+                self.generator, canonical, state["response_language"], state["input"], repair_budget
+            )
+            answer["diagnostics"]["canonical_content"] = canonical
             metadata = {
                 "created_at": created_at or datetime.now(timezone.utc).isoformat(),
                 "citations": answer["citations"],
@@ -942,9 +959,10 @@ class Workflow:
                 "response_language": state["response_language"],
             }
             return {
+                "answer": answer,
                 "messages": [
                     AIMessage(content=answer["content"], id=message_id or None, additional_kwargs=metadata)
-                ]
+                ],
             }
 
         graph = StateGraph(State)
@@ -1024,15 +1042,25 @@ class Workflow:
             }
             return result["answer"], message
         except StructuredOutputError:
+            snapshot = await self.graph().aget_state({"configurable": {"thread_id": str(conversation_id)}})
+            language = snapshot.values.get("response_language", language)
+            if language == "auto":
+                # Without a validated language decision, report a retryable operation
+                # error instead of publishing a canned answer in an arbitrary language.
+                raise
+            base_language = language.split("-")[0]
+            template_language = base_language if base_language in TEXT else "en"
             text = (
                 {
                     "en": "I couldn't produce a validated answer to this question.",
                     "es": "No pude generar una respuesta validada a esta pregunta.",
                     "ar": "لم أتمكن من تقديم إجابة تم التحقق منها لهذا السؤال.",
-                }[language]
+                }[template_language]
                 + "\n\n"
-                + TEXT[language]["quote"].format(url=QUOTE_URL)
+                + TEXT[template_language]["quote"].format(url=QUOTE_URL)
             )
+            if template_language == "en" and base_language != "en":
+                text = await localize(self.generator, text, language, question, [0])
             metadata = {
                 "created_at": created,
                 "response_language": language,

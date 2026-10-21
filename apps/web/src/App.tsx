@@ -4,7 +4,6 @@ import remarkGfm from 'remark-gfm';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { createUuid } from '@/lib/uuid';
 import {
@@ -17,7 +16,6 @@ import {
   CircleHelp,
   FileText,
   HeartPulse,
-  Languages,
   LoaderCircle,
   LockKeyhole,
   LogOut,
@@ -31,9 +29,8 @@ import {
   X,
 } from 'lucide-react';
 
-type Language = 'en' | 'es' | 'ar';
 type Account = { id: 'owner' | 'client'; role: 'owner' | 'client'; name: string };
-type Conversation = { id: string; title: string; response_language: Language; created_at: string; updated_at: string };
+type Conversation = { id: string; title: string; response_language: string; created_at: string; updated_at: string };
 type Citation = { id: string; url: string; title: string; section: string };
 type Activity = { stage: string; message: string };
 type Message = {
@@ -55,7 +52,7 @@ type Run = {
   events_url: string;
   user_message_id?: string;
   input?: string;
-  response_language?: Language;
+  response_language?: string;
   retryable?: boolean;
 };
 type HistoryResponse = { items: Message[]; active_run: Run | null; latest_run?: Run | null };
@@ -70,8 +67,6 @@ type KnowledgeStatus = {
   last_error: string | null;
 };
 type ApiFailure = Error & { status: number };
-
-const languageNames: Record<Language, string> = { en: 'English', es: 'Spanish', ar: 'Arabic' };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
@@ -153,7 +148,6 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [language, setLanguage] = useState<Language>('en');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [activeRun, setActiveRun] = useState<Run | null>(null);
@@ -313,8 +307,6 @@ function App() {
       setLoadingMessages(false);
       return;
     }
-    const selected = conversations.find((conversation) => conversation.id === selectedId);
-    if (selected) setLanguage(selected.response_language);
     void loadMessages(selectedId);
   }, [selectedId]); // Selection is the only trigger; the loaded conversation may update independently.
 
@@ -365,7 +357,6 @@ function App() {
           created_at: new Date().toISOString(),
           citations: [],
           activity: nextActivity,
-          response_language: language,
         }];
       });
     });
@@ -404,7 +395,6 @@ function App() {
             created_at: new Date().toISOString(),
             citations: [],
             activity: [],
-            response_language: language,
           }];
         }
         return current.map((message, index) => index === assistantIndex ? { ...message, content: message.content + data.text } : message);
@@ -533,7 +523,7 @@ function App() {
     try {
       const conversation = await request<Conversation>('/api/conversations', {
         method: 'POST',
-        body: JSON.stringify({ response_language: language }),
+        body: JSON.stringify({}),
       });
       setConversations((items) => [conversation, ...items.filter((item) => item.id !== conversation.id)]);
       selectConversation(conversation.id);
@@ -541,7 +531,7 @@ function App() {
       recoverUnauthorized(error);
       if (!isUnauthorized(error)) setNotice(error instanceof Error ? error.message : 'Could not start a conversation.');
     }
-  }, [language, recoverUnauthorized, selectConversation]);
+  }, [recoverUnauthorized, selectConversation]);
 
   const sendMessage = async (text: string) => {
     const content = text.trim();
@@ -556,7 +546,7 @@ function App() {
       if (!conversationId) {
         const created = await request<Conversation>('/api/conversations', {
           method: 'POST',
-          body: JSON.stringify({ response_language: language }),
+          body: JSON.stringify({}),
         });
         conversationId = created.id;
         setConversations((items) => [created, ...items.filter((item) => item.id !== created.id)]);
@@ -576,7 +566,7 @@ function App() {
       setDraft('');
       const run = await request<Run>(`/api/conversations/${conversationId}/runs`, {
         method: 'POST',
-        body: JSON.stringify({ message: content, client_message_id: clientMessageId, response_language: language }),
+        body: JSON.stringify({ message: content, client_message_id: clientMessageId }),
       });
       if (selectedIdRef.current !== conversationId) {
         skipMessageLoadRef.current = true;
@@ -788,7 +778,7 @@ function App() {
           {filteredConversations.length === 0 ? <p className="history-empty">{search ? 'No matching conversations.' : 'Your conversations will appear here.'}</p> : filteredConversations.map((conversation) => (
             <Button key={conversation.id} variant="ghost" className={`history-item ${selectedId === conversation.id ? 'history-item-active' : ''}`} onClick={() => selectConversation(conversation.id)} aria-current={selectedId === conversation.id ? 'page' : undefined}>
               <span className="history-icon"><MessageCircle size={16} /></span>
-              <span className="history-copy"><span className="history-title">{conversation.title || 'New conversation'}</span><span className="history-meta">{languageNames[conversation.response_language]} · {formatDate(conversation.updated_at)}</span></span>
+              <span className="history-copy"><span className="history-title">{conversation.title || 'New conversation'}</span><span className="history-meta">{formatDate(conversation.updated_at)}</span></span>
               {selectedId === conversation.id && <span className="selected-indicator" aria-hidden="true" />}
             </Button>
           ))}
@@ -809,10 +799,6 @@ function App() {
               {knowledge?.last_error && <span className="knowledge-error" role="img" aria-label="Last knowledge refresh failed" title={knowledge.last_error}>!</span>}
               <Button variant="ghost" size="icon" className="icon-button refresh-button" onClick={() => void refreshKnowledge()} disabled={refreshBusy || knowledge?.refresh_running} aria-label="Refresh knowledge sources" title="Refresh knowledge sources"><RefreshCw size={16} className={refreshBusy || knowledge?.refresh_running ? 'spin' : ''} /></Button>
             </div>}
-            <div className="language-picker"><Languages size={16} aria-hidden="true" /><Select value={language} onValueChange={(value) => setLanguage(value as Language)}>
-              <SelectTrigger id="response-language" className="language-select-trigger" aria-label="Response language"><SelectValue /></SelectTrigger>
-              <SelectContent className="language-options"><SelectItem value="en">EN <span className="sr-only">English</span></SelectItem><SelectItem value="es">ES <span className="sr-only">Español</span></SelectItem><SelectItem value="ar">AR <span className="sr-only">العربية</span></SelectItem></SelectContent>
-            </Select><ChevronDown size={13} className="language-chevron" aria-hidden="true" /></div>
           </div>
         </header>
 
@@ -854,7 +840,7 @@ function App() {
           </Collapsible.Root>}
           <form className="composer" onSubmit={handleSubmit}>
             <label htmlFor="chat-input" className="sr-only">Ask a question</label>
-            <Textarea id="chat-input" ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={language === 'es' ? '¿Qué te gustaría saber?' : language === 'ar' ? 'ما الذي تود معرفته؟' : 'Ask anything about your care journey…'} rows={1} disabled={!!activeRun || sending} aria-describedby="composer-hint" />
+            <Textarea id="chat-input" ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder="Ask anything about your care journey…" rows={1} disabled={!!activeRun || sending} aria-describedby="composer-hint" />
             <Button className="send-button" type="submit" disabled={!draft.trim() || !!activeRun || sending} aria-label="Send message">{sending ? <LoaderCircle size={18} className="spin" /> : <Send size={17} />}</Button>
             <div className="composer-bottom"><span id="composer-hint"><LockKeyhole size={12} /> Private conversation</span><span>Enter to send <i>·</i> Shift + Enter for a new line</span></div>
           </form>
@@ -873,9 +859,19 @@ function formatStage(stage: string): string {
   return stage.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function isRtlLanguage(language?: string): boolean {
+  if (!language || language === 'auto') return false;
+  try {
+    const script = new Intl.Locale(language).maximize().script;
+    return ['Arab', 'Hebr', 'Thaa', 'Nkoo', 'Adlm', 'Rohg', 'Syrc'].includes(script ?? '');
+  } catch {
+    return false;
+  }
+}
+
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
-  const rtl = !isUser && message.response_language === 'ar';
+  const rtl = !isUser && isRtlLanguage(message.response_language);
   const outcome = message.outcome?.trim();
   const visibleOutcome = outcome && !['known', 'unknown'].includes(outcome.toLowerCase()) ? outcome : '';
   const safeCitations = message.citations

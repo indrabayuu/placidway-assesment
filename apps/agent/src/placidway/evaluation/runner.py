@@ -16,6 +16,7 @@ from placidway.evaluation.judge import DecisionJudge
 from placidway.evaluation.metrics import ConversationDecisionMetric, make_metrics, retrieval_metrics
 from placidway.evaluation.provenance import finish_round, provenance, record_round, require_calibration
 from placidway.llm import Generator
+from placidway.localization import protected_values
 from placidway.models import AnswerDraft, Evidence, PriceFact, ResolvedRequest
 from placidway.retrieval import Embedder, Retriever
 from placidway.sources import allowed_url
@@ -77,16 +78,22 @@ def deterministic_checks(case, answer):
         ResolvedRequest.model_validate(diagnostics.get("request", {"query": case["question"]})),
     )
     price_values = True
-    remaining_content = answer["content"]
+    canonical = diagnostics.get("canonical_content")
+    checked_content = canonical if canonical is not None else answer["content"]
+    remaining_content = checked_content
+    if canonical is not None:
+        price_values &= protected_values(answer["content"]) == protected_values(canonical)
     for key in used:
         if key not in facts:
             price_values = False
             continue
         fact = facts[key]
         block = AnswerDraft(outcome="answered", blocks=[{"kind": "price", "price_id": key}])
-        expected_text, _ = render(block, evidence, prices, answer["response_language"])
+        expected_text, _ = render(
+            block, evidence, prices, "en" if canonical is not None else answer["response_language"]
+        )
         approved_fragment = expected_text.rsplit(" [", 1)[0]
-        price_values &= approved_fragment in answer["content"] and fact.evidence_id in cited
+        price_values &= approved_fragment in checked_content and fact.evidence_id in cited
         remaining_content = remaining_content.replace(approved_fragment, "")
     # Inspect published content independently of draft/used-ID diagnostics, including safe fallbacks.
     price_values &= not bool(

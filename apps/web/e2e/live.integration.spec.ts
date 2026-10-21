@@ -33,9 +33,8 @@ test('live owner chat returns sourced Arabic cost guidance and restores from his
   expect(knowledgeStatus?.price_count).toBe(59);
   await expect(page.getByText('Sources up to date')).toBeVisible();
 
-  await page.getByRole('combobox', { name: 'Response language' }).click();
-  await page.getByRole('option', { name: /AR العربية/ }).click();
-  const question = 'How much does outpatient adenocarcinoma cancer treatment at ITC in Mexico cost?';
+  await expect(page.getByRole('combobox', { name: 'Response language' })).toHaveCount(0);
+  const question = 'كم تبلغ تكلفة برنامج علاج السرطان الغدي (adenocarcinoma) للمرضى الخارجيين في المكسيك؟';
   await page.getByRole('textbox', { name: 'Ask a question' }).fill(question);
   await page.getByRole('button', { name: 'Send message' }).click();
 

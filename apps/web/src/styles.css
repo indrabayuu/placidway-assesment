@@ -111,9 +111,6 @@ button:disabled { cursor: not-allowed; }
 .knowledge-label { color: #7a938e; font-size: 9px; white-space: nowrap; }
 .knowledge-error { display: grid; width: 14px; height: 14px; place-items: center; border-radius: 50%; color: #a95847; background: #fae9e4; font-size: 10px; font-weight: 750; }
 .refresh-button { width: 25px; height: 25px; flex-basis: 25px; }
-.language-picker { position: relative; display: flex; height: 33px; align-items: center; gap: 7px; padding: 0 8px; border: 1px solid #e9efed; border-radius: 8px; color: #79928c; background: #fff; }
-.language-picker .language-select-trigger { min-width: 31px; padding: 0 9px 0 0; border: 0; outline: 0; color: #405f59; background: transparent; font-size: 10px; font-weight: 700; cursor: pointer; }
-.language-chevron { position: absolute; right: 7px; pointer-events: none; }
 .notice-bar { display: flex; min-height: 35px; align-items: center; justify-content: space-between; gap: 12px; padding: 2px clamp(22px, 4.2vw, 62px); color: #527d70; background: #edf7f1; font-size: 11px; }
 .notice-bar .icon-button { width: 26px; height: 26px; flex-basis: 26px; }
 .notice-error { color: #8b5549; background: #fbf0ec; }
@@ -304,8 +301,6 @@ button:disabled { cursor: not-allowed; }
   .knowledge-control { height: 29px; gap: 5px; padding-left: 7px; }
   .knowledge-label { max-width: 92px; overflow: hidden; font-size: 8px; text-overflow: ellipsis; }
   .refresh-button { width: 23px; height: 23px; flex-basis: 23px; }
-  .language-picker { height: 30px; gap: 4px; padding-inline: 6px; }
-  .language-picker > svg:first-child { width: 14px; }
   .welcome-content { width: min(480px, calc(100% - 30px)); padding-top: 12px; }
   .welcome-ornament { width: 90px; height: 83px; margin-bottom: 13px; transform: scale(.84); }
   .welcome-content h1 { font-size: clamp(25px, 7vw, 31px); }
@@ -383,7 +378,6 @@ button:disabled { cursor: not-allowed; }
 .message-label span { color: #60766f; }
 .message-label time { color: #536d66; }
 .sidebar-help > svg { color: #536d66; }
-.language-picker { color: #526d66; }
 .secret-wrap { color: #536d66; }
 .send-button:disabled { color: #536d66; }
 .scroll-bottom { color: #405f58; }

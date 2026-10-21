@@ -86,6 +86,16 @@ The server has 2 GB RAM and 2 GB swap; these checks ran without a concurrent ima
 
 Release `v1.0.1` fixes message submission on public HTTP origins where `crypto.randomUUID()` is unavailable. The original live browser check used localhost through an SSH tunnel, which browsers treat as a secure context. A regression test now disables that API and verifies a valid version-4 message UUID; all eight browser smoke tests and the production build passed. A direct browser check at `http://43.173.33.81` then confirmed an insecure context, successful UUID submission and a sourced price answer without browser errors. Only that test's conversation was removed; existing user history, database credentials, corpus and document vectors were preserved.
 
+## Automatic response language verification
+
+The language selector was removed. The resolver now detects any language supported by the generation model, honors an explicit language request, and keeps retrieval queries in English. Canonical English answers retain the existing fact checks; non-English replies are translated with protected numeric values, currency codes and URLs, then checked for language and semantic fidelity before publication.
+
+Focused native DeepEval verification passed seven source-bound cost cases: Indonesian, Japanese, French, Hindi, Hebrew, and explicit requests for English and Spanish. The original cost golden and required price record were reused without changing labels or the 0.8 metric thresholds. Four additional real-provider resolver checks passed for ambiguous follow-ups, language switching and a Japanese preference inside a French question. Reports remain local under `reports/evals/20261021T162812Z-native-single-all/`.
+
+An initial explicit-Spanish case exposed an internal verifier incorrectly applying the user's final language to the canonical English draft. Its policy was clarified to verify the internal language at that stage; all seven cases then passed. This focused verification does not replace or improve the historical benchmark scores above, and it does not establish quality for every language.
+
+Backend checks passed 56 unit tests and two PostgreSQL/API integration tests. Eight browser smoke tests and the frontend production build passed. These cover ignored legacy client-language hints, persisted detected language, localized refusals, and rejection of altered numbers, URLs, protected-token order or translated meaning.
+
 ## Reproduce the checks
 
 For host-based evaluation, follow the [README setup](../README.md), install `uv sync --extra eval` in `apps/agent/`, and configure a reachable PostgreSQL/pgvector database plus generation and judge credentials. Use the audited corpus matching the labels; if sources changed, audit the snapshots and labels before regenerating bindings.
@@ -107,6 +117,7 @@ uv run placidway evaluate --split dev --mode hybrid
 uv run placidway evaluate-conversations --split dev --mode hybrid
 RUN_LIVE_EVALS=1 EVAL_SPLIT=all RETRIEVAL_MODE=hybrid uv run deepeval test run tests/evals/test_single_turn.py
 RUN_LIVE_EVALS=1 EVAL_SPLIT=all RETRIEVAL_MODE=hybrid uv run deepeval test run tests/evals/test_conversation.py
+RUN_LIVE_EVALS=1 EVAL_SPLIT=all RETRIEVAL_MODE=hybrid uv run deepeval test run tests/evals/test_automatic_language.py
 ```
 
 These commands use configured providers and may incur API costs. Calibration must match the judge model, rubric and fixed threshold. Run the native single-turn and conversation suites sequentially because concurrent DeepEval processes share temporary files. A retained strict failure produces a nonzero suite exit; numerical results still need inspection.

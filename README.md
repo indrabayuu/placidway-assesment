@@ -1,6 +1,6 @@
 # PlacidWay website knowledge chatbot
 
-A chatbot for the AI Automation Engineer assessment that answers from the seven approved PlacidWay pages. It cites supporting URLs, preserves price currency and programme context, and offers a quote link when information is missing. The interface supports English, Spanish and Arabic, conversation history and follow-up questions.
+A chatbot for the AI Automation Engineer assessment that answers from the seven approved PlacidWay pages. It cites supporting URLs, preserves price currency and programme context, and offers a quote link when information is missing. The agent detects the user's language per message and supports conversation history and follow-up questions.
 
 ## Assessment submission
 
@@ -56,7 +56,8 @@ flowchart LR
   Retrieve --> Coverage[Check evidence coverage]
   Coverage --> Draft[Structured answer]
   Draft --> Validate[Price, citation and support checks]
-  Validate --> Persist[Checkpoint and durable SSE events]
+  Validate --> Localize[Translate and verify when needed]
+  Localize --> Persist[Checkpoint and durable SSE events]
   Persist --> UI
 ```
 
@@ -68,7 +69,7 @@ flowchart LR
 | GPT-OSS 120B | Resolves requests, checks coverage, drafts structured answers and verifies support; structured output allows validation before display |
 | Local `all-MiniLM-L6-v2`, pgvector and `rank_bm25` | Small CPU embedding model and interchangeable dense, lexical and hybrid retrieval; hybrid was selected from the recorded comparison |
 | PostgreSQL 17 | Stores source versions, decimal price facts, vectors, sessions, conversations, checkpoints and replayable events together |
-| React, TypeScript, Vite, Bun, Tailwind and shadcn/ui primitives | Responsive chat interface with language selection, Arabic RTL, citations and recovery states |
+| React, TypeScript, Vite, Bun, Tailwind and shadcn/ui primitives | Responsive chat interface with automatic RTL direction, citations and recovery states |
 | DeepEval and Mercury Decide | Offline deterministic checks plus a separate typed decision judge for grounding, completeness, scope and language |
 | Docker Compose and Nginx | Reproducible local deployment with persistent volumes and a same-origin, unbuffered API proxy |
 
@@ -78,7 +79,9 @@ Text is chunked with MiniLM's tokenizer using a 220-word-piece budget and 32-pie
 
 Prices are stored as `Decimal` facts associated with treatment, country, programme, qualifier, currency, duration or unit, and supporting evidence. The server renders selected records. Validation checks price associations, supported numbers and allowed citations, then uses a separate model call to verify factual support. Missing recovery time is not inferred from programme duration; a cheaper-country conclusion requires compatible evidence for both sides. Website claims and testimonials do not establish personal medical suitability.
 
-Retrieval uses English queries; the selected response language is persisted as English, Spanish or Arabic. The resolver receives the last eight conversation messages while the full transcript remains stored. Progress stages stream immediately. Answer text is released as SSE deltas only after validation and checkpointing. The activity panel shows operational summaries.
+Retrieval queries and normalized search fields remain English. The model detects the response language from each message, with no frontend selector or language allowlist. An explicit language request takes priority; otherwise a substantive question follows its own language, while an ambiguous short follow-up retains the recent conversational language. The resolver receives the last eight conversation messages while the full transcript remains stored.
+
+Factual validation uses a canonical English answer. Non-English answers then pass through translation and a separate fidelity/language check. Exact numbers, currency codes and URLs are protected from translation; a failed translation produces a retryable operational error rather than an unverified answer. Detected language is persisted with each answer. Progress stages stream immediately. Answer text is released as SSE deltas only after validation, translation and checkpointing. The activity panel shows operational summaries.
 
 ## Refresh, persistence and public hosting
 

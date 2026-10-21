@@ -2,11 +2,19 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
-Language = Literal["en", "es", "ar"]
+Language = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        to_lower=True,
+        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+        max_length=35,
+    ),
+]
 Outcome = Literal[
     "answered",
     "partial",
@@ -98,6 +106,12 @@ class ResolvedRequest(BaseModel):
     programme: str = ""
     clinic: str = ""
     response_language: Language = "en"
+    country_mention: str = ""
+    programme_mention: str = ""
+
+
+class LocalizedAnswer(BaseModel):
+    content: str = Field(min_length=1)
 
 
 class AnswerBlock(BaseModel):

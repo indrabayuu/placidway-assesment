@@ -16,7 +16,6 @@ from placidway.config import settings
 from placidway.db import Database
 from placidway.ingestion import refresh
 from placidway.llm import Generator
-from placidway.models import Language
 from placidway.retrieval import Embedder, Retriever
 from placidway.workflow import Workflow
 
@@ -76,7 +75,8 @@ class LoginBody(BaseModel):
 
 
 class ConversationBody(BaseModel):
-    response_language: Language = "en"
+    # Legacy language fields are ignored; the resolver follows the user's message.
+    pass
 
 
 class RunBody(ConversationBody):
@@ -148,7 +148,7 @@ async def create_conversation(body: ConversationBody, request: Request, user=Dep
     key = uuid4()
     await request.app.state.db.execute(
         "INSERT INTO conversations(id,principal_id,response_language) VALUES(%s,%s,%s)",
-        (key, user["id"], body.response_language),
+        (key, user["id"], "auto"),
     )
     return await owned_conversation(request, key, user)
 
@@ -209,7 +209,7 @@ async def execute_run(application, row):
                 db,
                 key,
                 "answer.start",
-                {"message_id": message["id"], "response_language": row["response_language"]},
+                {"message_id": message["id"], "response_language": answer["response_language"]},
             )
             content = answer["content"]
             for start in range(0, len(content), 100):
@@ -217,8 +217,12 @@ async def execute_run(application, row):
             async with db.pool.connection() as connection:
                 async with connection.transaction():
                     await connection.execute(
-                        "UPDATE runs SET status='completed',finished_at=now(),result=%s WHERE id=%s",
-                        (Jsonb(answer), key),
+                        "UPDATE runs SET status='completed',finished_at=now(),result=%s,response_language=%s WHERE id=%s",
+                        (Jsonb(answer), answer["response_language"], key),
+                    )
+                    await connection.execute(
+                        "UPDATE conversations SET response_language=%s WHERE id=%s",
+                        (answer["response_language"], row["conversation_id"]),
                     )
                     await connection.execute(
                         "INSERT INTO run_events(run_id,event,data) VALUES(%s,'answer.complete',%s)",
@@ -269,7 +273,7 @@ async def start_run(conversation_id: UUID, body: RunBody, request: Request, user
     try:
         await db.execute(
             "INSERT INTO runs(id,conversation_id,client_message_id,input,response_language) VALUES(%s,%s,%s,%s,%s)",
-            (key, conversation_id, body.client_message_id, body.message.strip(), body.response_language),
+            (key, conversation_id, body.client_message_id, body.message.strip(), "auto"),
         )
     except UniqueViolation:
         existing = await db.one(
@@ -280,8 +284,8 @@ async def start_run(conversation_id: UUID, body: RunBody, request: Request, user
             return public_run(existing)
         raise HTTPException(409, "This conversation is already processing an answer") from None
     await db.execute(
-        "UPDATE conversations SET title=CASE WHEN title='New conversation' THEN %s ELSE title END,response_language=%s,updated_at=now() WHERE id=%s",
-        (body.message.strip()[:70], body.response_language, conversation_id),
+        "UPDATE conversations SET title=CASE WHEN title='New conversation' THEN %s ELSE title END,updated_at=now() WHERE id=%s",
+        (body.message.strip()[:70], conversation_id),
     )
     row = await db.one("SELECT * FROM runs WHERE id=%s", (key,))
     background(request.app, execute_run(request.app, row))

@@ -25,7 +25,10 @@ def provenance(config, corpus):
         "extractor_version": EXTRACTOR_VERSION,
         "index_version": INDEX_VERSION,
         "prompt_version": fingerprint(
-            {name: getattr(prompts, name) for name in ("RESOLVE", "COVERAGE", "DRAFT", "VERIFY")}
+            {
+                name: getattr(prompts, name)
+                for name in ("RESOLVE", "COVERAGE", "DRAFT", "VERIFY", "LOCALIZE", "VERIFY_LOCALIZATION")
+            }
         ),
         "rubric_version": rubric_version(),
         "generation_model": config.openai_model,

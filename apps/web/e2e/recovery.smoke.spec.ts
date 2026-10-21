@@ -31,7 +31,7 @@ test('restored interrupted run retries the last user message', async ({ page }) 
     const requestBody = route.request().postDataJSON() as { message: string; client_message_id: string; response_language: string };
     retriedMessage = requestBody.message;
     expect(requestBody.client_message_id).toMatch(/^[0-9a-f-]{36}$/i);
-    expect(requestBody.response_language).toBe('en');
+    expect(requestBody).not.toHaveProperty('response_language');
     await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: 'run-2', conversation_id: 'conversation-1', status: 'running', created_at: now, error: null, events_url: '/api/runs/run-2/events' }) });
   });
   await page.route('**/api/runs/run-2/events', async (route) => {

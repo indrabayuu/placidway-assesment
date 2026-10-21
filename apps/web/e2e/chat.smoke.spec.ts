@@ -9,7 +9,6 @@ test('secret login, Arabic response and streaming without crypto.randomUUID', as
   let authenticated = false;
   let eventStreamRequests = 0;
   const eventStreamUrls: string[] = [];
-  let submittedLanguage = '';
   let submittedMessage = '';
 
   await page.route('**/api/auth/me', async (route) => {
@@ -39,9 +38,9 @@ test('secret login, Arabic response and streaming without crypto.randomUUID', as
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ready: true, version: 'smoke', updated_at: now, source_count: 2, chunk_count: 6, price_count: 0, refresh_running: false, last_error: null }) });
   });
   await page.route('**/api/conversations/conversation-1/runs', async (route) => {
-    const body = route.request().postDataJSON() as { message: string; response_language: string; client_message_id: string };
+    const body = route.request().postDataJSON() as { message: string; client_message_id: string };
     expect(body.client_message_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-    submittedLanguage = body.response_language;
+    expect(body).not.toHaveProperty('response_language');
     submittedMessage = body.message;
     await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: 'run-1', conversation_id: 'conversation-1', status: 'running', created_at: now, error: null, events_url: '/api/runs/run-1/events' }) });
   });
@@ -85,12 +84,10 @@ test('secret login, Arabic response and streaming without crypto.randomUUID', as
   await page.getByLabel('Access secret').fill('smoke-secret');
   await page.getByRole('button', { name: 'Continue securely' }).click();
   await expect(page.getByRole('heading', { name: /Finding answers can feel simpler/ })).toBeVisible();
-  await page.getByRole('combobox', { name: 'Response language' }).click();
-  await page.getByRole('option', { name: /AR العربية/ }).click();
+  await expect(page.getByRole('combobox', { name: 'Response language' })).toHaveCount(0);
   await page.getByRole('textbox', { name: 'Ask a question' }).fill('ما الخيارات المتاحة؟');
   await page.getByRole('button', { name: 'Send message' }).click();
 
-  await expect.poll(() => submittedLanguage).toBe('ar');
   await expect.poll(() => submittedMessage).toBe('ما الخيارات المتاحة؟');
   const activityToggle = page.getByRole('button', { name: /Working through your question/ });
   await expect(activityToggle).toHaveAttribute('aria-expanded', 'false');
