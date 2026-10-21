@@ -96,6 +96,8 @@ An initial explicit-Spanish case exposed an internal verifier incorrectly applyi
 
 Backend checks passed 56 unit tests and two PostgreSQL/API integration tests. Eight browser smoke tests and the frontend production build passed. These cover ignored legacy client-language hints, persisted detected language, localized refusals, and rejection of altered numbers, URLs, protected-token order or translated meaning.
 
+Release `v1.0.2` was published by the tag-triggered [GitHub Actions build](https://github.com/indrabayuu/placidway-assesment/actions/runs/39635314686) and deployed to the public demo. Five live API turns passed: Indonesian and Japanese cost questions, an explicit French request, Hindi medical referral and a Hebrew out-of-scope refusal. Stored retrieval queries for the cost questions remained English despite a conflicting legacy client language hint. A direct HTTP browser check passed automatic Arabic RTL, sourced prices, history restoration and mobile layout, with no language selector or browser errors. The corpus/vector fingerprint, ingestion count and PostgreSQL password remained unchanged; only the three conversations created by these tests were removed.
+
 ## Reproduce the checks
 
 For host-based evaluation, follow the [README setup](../README.md), install `uv sync --extra eval` in `apps/agent/`, and configure a reachable PostgreSQL/pgvector database plus generation and judge credentials. Use the audited corpus matching the labels; if sources changed, audit the snapshots and labels before regenerating bindings.
