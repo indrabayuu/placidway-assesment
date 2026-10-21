@@ -12,7 +12,8 @@ node_modules/
 dist/
 data/
 reports/
-docs/
+docs/contract/
+docs/results/
 playwright-report/
 test-results/
 *.log

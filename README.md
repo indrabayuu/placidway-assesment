@@ -1,77 +1,111 @@
 # PlacidWay website knowledge chatbot
 
-A source-grounded chatbot for the AI Automation Engineer assessment. It answers from the seven approved PlacidWay pages, cites its sources, and offers a free quote when the pages cannot answer. Prices come from audited structured records rather than generated numbers.
+A chatbot for the AI Automation Engineer assessment that answers from the seven approved PlacidWay pages. It cites supporting URLs, preserves price currency and programme context, and offers a quote link when information is missing. The interface supports English, Spanish and Arabic, conversation history and follow-up questions.
 
-## Start with Docker Compose
+## Assessment submission
 
-Requirements: Docker Engine/Desktop with Compose, Python 3 for the one-time configuration bootstrap, network access to the seven source URLs, Hugging Face on the first embedding-model download, and the configured generation provider. Python 3.12 with uv and Bun are needed for host development.
+| Item | Where to find it |
+| --- | --- |
+| Setup, architecture and technology choices | This README |
+| Answers to the eight assessment questions | [Recorded chatbot answers](docs/assessment-answers.md) |
+| Known limitations and improvements with another week | [Half-page write-up](docs/limitations.md) |
+| Evaluation method, results and remaining failures | [Evaluation summary](docs/evaluation.md) |
+| Public demo | **Pending: add the deployed HTTPS URL before submission.** |
+
+Public deployment and seven-day availability have not been verified in the recorded results. Before submission, provision the public URL, provide the reviewer login secret privately, and keep the application and generation provider available for at least seven days after submission.
+
+## Run locally
+
+Requirements: Docker with Compose, Python 3 for configuration bootstrap, and network access to the approved pages, Hugging Face for the initial embedding download, and your generation provider. Allow at least 4 GB RAM for the Compose deployment and build headroom; no GPU is required.
+
+From the repository root:
 
 ```sh
-cd placidway-assesment
 python3 scripts/bootstrap_env.py
-# Edit .env locally; never commit it.
+# Edit .env with your provider settings.
+docker compose config --quiet
 docker compose up --build -d
 ```
 
-Open **http://localhost:8080**. Initial ingestion takes a few minutes: the crawler respects the website's observed 10-second crawl delay and downloads the embedding model once. The UI shows knowledge readiness. Check startup with `docker compose ps` and `docker compose logs --tail=60 refresh`.
+Open **http://localhost:8080**. The refresh worker performs initial ingestion; this can take a few minutes while it downloads the embedding model and observes the website's crawl delay. Check progress with `docker compose ps` and `docker compose logs --tail=60 api refresh`. The interface displays knowledge readiness.
 
-The bootstrap script preserves supplied settings from the parent `.env` and creates two independent random login secrets. Use `AUTH_OWNER_SECRET` for your owner session or `AUTH_CLIENT_SECRET` for the PlacidWay reviewer session. Login has a single secret field. The owner can refresh content; the client cannot see the owner's conversations. Secrets are stored only in the ignored `.env`, with file mode 0600. Rotating a login secret and restarting the API revokes that account's previous sessions.
+The bootstrap script preserves existing repository settings, or imports the parent `.env` when creating the repository configuration. It fills missing configuration entries and generates separate `AUTH_OWNER_SECRET` and `AUTH_CLIENT_SECRET` values if absent. The resulting `.env` is ignored by Git and has mode `0600`. Enter the appropriate secret in the single-field login screen. The owner can refresh content; each account has its own history. People using the same account secret share that account's history.
 
-Set these provider settings in `.env`:
-
-| Variables | Purpose |
+| Configuration | Purpose |
 | --- | --- |
-| `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY` | Your OpenAI-compatible Chat Completions endpoint for Bedrock GPT-OSS 120B |
-| `OPENAI_REASONING_EFFORT=low` | Generation reasoning budget; output is validated JSON |
-| `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `OPENROUTER_API_KEY` | Offline decision judge, using the user-tested `/systemone` API |
-| `RETRIEVAL_MODE` | `dense`, `bm25`, or `hybrid`; see measured results in docs |
-| `PORT=8080` | Frontend host port |
-| `COOKIE_SECURE=false` | Set `true` when serving the app over HTTPS |
-| `POSTGRES_PASSWORD` | Optional database password override for Compose |
+| `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY` | Required OpenAI-compatible Chat Completions provider; the recorded build used Bedrock GPT-OSS 120B (`openai.gpt-oss-120b-1:0`) |
+| `OPENAI_REASONING_EFFORT=low` | Reasoning budget used in the recorded build |
+| `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `OPENROUTER_API_KEY` | Offline evaluation judge; recorded model: `inception/mercury-decide:free` through `/systemone` |
+| `RETRIEVAL_MODE=hybrid` | Default retrieval; `dense` and `bm25` are also available |
+| `REFRESH_INTERVAL_SECONDS=86400` | Daily refresh interval |
+| `PORT=8080`, `COOKIE_SECURE=false` | Local HTTP settings; use `COOKIE_SECURE=true` behind public HTTPS |
+| `POSTGRES_PASSWORD` | Optional Compose database password override |
 
-The judge is unnecessary for chatting. There is no LangSmith or Confident AI upload. `.env.example` contains configuration names without credentials. Never expose provider keys to the frontend.
+The judge is needed only for judge-backed evaluations. Chat uses the generation provider and local retrieval. Keep credentials in `.env`; the frontend receives no provider keys. The credential-free [.env.example](.env.example) lists the application settings.
 
-## How it works
+## Architecture and design choices
 
 ```mermaid
 flowchart LR
-  Pages[Seven allowlisted pages] --> Extract[Robots-aware extraction]
-  Extract --> Facts[Versioned price facts]
-  Extract --> Chunks[MiniLM chunks and vectors]
-  Facts --> PG[(PostgreSQL + pgvector)]
-  Chunks --> PG
-  UI[React / Bun UI] --> API[FastAPI + session auth]
-  API --> Resolve[Resolve intent and follow-up]
-  Resolve --> Retrieve[Dense / BM25 / hybrid retrieval]
-  PG --> Retrieve
-  Retrieve --> Coverage[Check coverage / one broader pass]
-  Coverage --> Draft[Structured factual draft]
+  Sources[Seven approved pages] --> Extract[Extract text and price facts]
+  Extract --> DB[(PostgreSQL and pgvector)]
+  UI[React chat interface] --> Resolve[Resolve question and history]
+  Resolve --> Retrieve[Hybrid retrieval and price lookup]
+  DB --> Retrieve
+  Retrieve --> Coverage[Check evidence coverage]
+  Coverage --> Draft[Structured answer]
   Draft --> Validate[Price, citation and support checks]
-  Validate --> Checkpoint[PostgreSQL LangGraph checkpoint]
-  Checkpoint --> SSE[Durable SSE replay]
-  SSE --> UI
+  Validate --> Persist[Checkpoint and durable SSE events]
+  Persist --> UI
 ```
 
-The backend uses explicit LangGraph nodes with LangChain's `ChatOpenAI` client. Retrieval is English; responses support English, Spanish, and Arabic, including RTL layout. Only the last eight conversation messages enter the resolver, while the full transcript remains persisted.
+| Tool or model | Role and reason for choosing it |
+| --- | --- |
+| Python 3.12, uv and FastAPI | Typed backend with reproducible dependencies, HTTP endpoints and server-sent events |
+| Beautiful Soup and HTTPX | Source-specific extraction that preserves tables and removes navigation, forms and unrelated recommendations |
+| LangGraph and LangChain `ChatOpenAI` | Explicit, bounded workflow with persisted state and an OpenAI-compatible model client |
+| GPT-OSS 120B | Resolves requests, checks coverage, drafts structured answers and verifies support; structured output allows validation before display |
+| Local `all-MiniLM-L6-v2`, pgvector and `rank_bm25` | Small CPU embedding model and interchangeable dense, lexical and hybrid retrieval; hybrid was selected from the recorded comparison |
+| PostgreSQL 17 | Stores source versions, decimal price facts, vectors, sessions, conversations, checkpoints and replayable events together |
+| React, TypeScript, Vite, Bun, Tailwind and shadcn/ui primitives | Responsive chat interface with language selection, Arabic RTL, citations and recovery states |
+| DeepEval and Mercury Decide | Offline deterministic checks plus a separate typed decision judge for grounding, completeness, scope and language |
+| Docker Compose and Nginx | Reproducible local deployment with persistent volumes and a same-origin, unbuffered API proxy |
 
-Content is ingested in advance and refreshed daily or by the owner. No arbitrary live browsing runs during chat. All seven pages must validate before a new corpus becomes active; a failed refresh preserves the previous corpus. Unchanged pages reuse their stored chunks and embeddings. Each answer pins a single corpus version.
+Ingestion follows only the allowlist in [sources.py](apps/agent/src/placidway/sources.py): the ITC clinic profile, three cancer treatment packages, clinic video listings, clinic price list and alternative-medicine price comparison. It identifies the crawler, respects `robots.txt`, and waits at least one second between requests or longer when required; the observed crawl delay was ten seconds. Video ingestion uses visible listing text only.
 
-High-risk prices use `Decimal` records tied to treatment, country, programme, qualifiers, units and source evidence. Exact price lookups select records; the server renders their amounts. Every factual candidate passes a separate support verifier. Missing recovery time is never inferred from the three-week treatment duration. A comparison cannot establish a cheaper option without compatible evidence for both sides.
+Text is chunked with MiniLM's tokenizer using a 220-word-piece budget and 32-piece prose overlap. Table rows retain their headers. Retrieval combines dense and BM25 ranks using reciprocal rank fusion, retrieves five initial child hits and expands their parent evidence. Structured price lookup runs alongside text retrieval. The graph can make one broader retrieval pass when evidence coverage is insufficient.
 
-Progress stages stream immediately. The answer itself is buffered until validation and checkpointing finish, then delivered as SSE deltas. This is validated answer streaming, not raw model-token streaming. The collapsed activity panel contains operational summaries; private model reasoning is removed and never displayed. Hybrid retrieval is the delivered default after the measured comparison; dense remains the baseline and all modes can be selected through configuration.
+Prices are stored as `Decimal` facts associated with treatment, country, programme, qualifier, currency, duration or unit, and supporting evidence. The server renders selected records. Validation checks price associations, supported numbers and allowed citations, then uses a separate model call to verify factual support. Missing recovery time is not inferred from programme duration; a cheaper-country conclusion requires compatible evidence for both sides. Website claims and testimonials do not establish personal medical suitability.
 
-## Development
+Retrieval uses English queries; the selected response language is persisted as English, Spanish or Arabic. The resolver receives the last eight conversation messages while the full transcript remains stored. Progress stages stream immediately. Answer text is released as SSE deltas only after validation and checkpointing. The activity panel shows operational summaries.
+
+## Refresh, persistence and public hosting
+
+Content refresh runs at startup and daily. The owner can use the refresh control in the interface or run:
+
+```sh
+docker compose exec api uv run --no-sync placidway refresh
+```
+
+Refresh validates all seven sources before atomically publishing a corpus. Unchanged pages reuse chunks and embeddings; a failed refresh preserves the previous corpus. Each answer uses one corpus version throughout. Changed content must be audited against the frozen evaluation labels before those evaluations can run again.
+
+For public hosting, use a persistent Linux host with Docker Compose, HTTPS and long-lived SSE support. Set `COOKIE_SECURE=true`, keep the database internal, and build images before reviewer traffic. The included Nginx proxy disables SSE buffering. Run a single API worker, as required by the application's in-process scheduling. `/api/health/live` checks process liveness and `/api/health/ready` checks configuration and corpus readiness; readiness does not test the external generation provider.
+
+Named volumes retain PostgreSQL data, source snapshots and the embedding cache. `docker compose restart api web` preserves completed history; interrupted runs can be retried. Avoid `docker compose down -v` when retaining data. Back up the database and source snapshots, and keep `.env` protected separately. Disable host auto-suspend and monitor the public URL during the required seven-day review period.
+
+## Development and checks
+
+Host development requires Python 3.12, uv, Bun and a reachable PostgreSQL database with pgvector. Set `DATABASE_URL` in `.env`; the Compose database has no published host port by default.
 
 ```sh
 cd apps/agent
 uv sync --extra eval
 uv run placidway migrate
-uv run placidway provider-check
 uv run placidway refresh
 uv run placidway serve --host 127.0.0.1
 ```
 
-For host development, set `DATABASE_URL` to a reachable PostgreSQL database with pgvector. Compose's database is internal by default. Run frontend commands in another terminal:
+In another terminal, from the repository root:
 
 ```sh
 cd apps/web
@@ -79,50 +113,8 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-Vite serves port 5173 and proxies `/api` to port 8000. The production frontend uses Nginx and same-origin API requests. Linux containers install CPU-only PyTorch; no GPU is required.
+Vite serves port 5173 and proxies `/api` to port 8000. Production uses the Bun-built frontend served by Nginx. Backend source is in `apps/agent/src/placidway/`; frontend source is in `apps/web/src/`.
 
-## Verify and evaluate locally
+For local checks, run `uv run ruff check src tests` and `uv run pytest -q` from `apps/agent/`, then `bun run typecheck`, `bun run test:smoke`, `bun run test:mobile` and `bun run build` from `apps/web/`. Browser suites require installed Google Chrome. Against the running Compose application, use `PLAYWRIGHT_BASE_URL=http://localhost:8080 bun run test:live`.
 
-```sh
-cd apps/agent
-uv run ruff check src tests
-uv run pytest -q
-RUN_DB_TESTS=1 uv run pytest tests/test_api_integration.py -q
-RUN_DB_TESTS=1 uv run pytest tests/test_refresh_integration.py -q
-uv run placidway compare-retrieval
-uv run placidway calibrate-judge
-uv run placidway evaluate --split dev --mode hybrid
-uv run placidway evaluate-conversations --split dev --mode hybrid
-RUN_LIVE_EVALS=1 EVAL_SPLIT=all RETRIEVAL_MODE=hybrid uv run deepeval test run tests/evals/test_single_turn.py
-RUN_LIVE_EVALS=1 EVAL_SPLIT=all RETRIEVAL_MODE=hybrid uv run deepeval test run tests/evals/test_conversation.py
-```
-
-Provider-backed commands use your configured API access. Normal pytest skips live suites and the database integration test unless opted in. There are 60 source-labelled single-turn cases (40 development, 20 held-out), 12 conversations (8 development, 4 held-out), and eight separate judge calibration fixtures. Labels are **AI-curated and source-verified**, not human-labelled. They are frozen against content hashes; evaluation stops if the active corpus has changed. Audit source changes before regenerating labels with `uv run python ../../scripts/build_eval_dataset.py`.
-
-Reports, evidence, scores, usage and failures stay under `reports/`. The custom DeepEval metrics call the typed decision endpoint directly; this model does not masquerade as a text-generating judge. A wrong price record or outcome fails independently of the judge. The 0.8 threshold is fixed and matching calibration is required before live evaluation. Reports fingerprint the code, prompts, corpus, extractor, embedding model and rubric. Historical failures are retained. Ten improvement rounds are already recorded; subsequent audit runs are verification. Retrieval metrics use stable evidence identities at ranks 3 and 5, with duplicate chunks receiving no extra gain. The current family-disjoint split is a regression split: all cases have been inspected previously, so it is not an independent holdout.
-
-```sh
-cd apps/web
-bun run typecheck
-bun run test:smoke
-bun run test:mobile
-bun run build
-# Against the Compose app, using the ignored .env login secret:
-PLAYWRIGHT_BASE_URL=http://localhost:8080 bun run test:live
-```
-
-Browser tests use installed Google Chrome (`channel: 'chrome'` in the Playwright configs).
-
-Compose also has an optional evaluation image: `docker compose --profile eval run --build --rm evals evaluate --split dev --mode hybrid`. Evaluation dependencies are excluded from the production image.
-
-## Operations and handoff
-
-- [Detailed approved specification](docs/implementation-spec.md)
-- [Review against the original contract](docs/contract-audit.md)
-- [API and streaming contract](docs/chat-api.md)
-- [Deployment, refresh, backup and recovery](docs/operations.md)
-- [Evaluation findings and required assessment answers](docs/evaluation.md)
-- [Actual answers to all eight assessment questions](docs/assessment-answers.md)
-- [Known limitations and next-week improvements](docs/limitations.md)
-
-The application is runnable locally with Compose. Public hosting and DNS belong to the user; a public submission URL must still be provisioned and kept available for at least seven days. No email, repository publication, or external deployment is performed automatically.
+The [evaluation summary](docs/evaluation.md) provides database and provider-backed reproduction commands. The recorded strict results were **58/60 single-turn cases and 10/12 conversations**. All recorded deterministic gates passed, with four remaining judge-gate failures disclosed in that summary. These are regression results from AI-curated, source-verified labels; all current cases have previously been inspected.

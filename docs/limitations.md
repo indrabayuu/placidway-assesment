@@ -1,0 +1,9 @@
+# Known limitations and improvements with another week
+
+The chatbot is limited to seven approved English pages. It cannot fill gaps from other websites, confirm availability, book appointments or assess whether treatment is suitable for an individual. The quote link opens a PlacidWay clinic profile; lead capture is not implemented. Video evidence is limited to visible listings, and testimonials or promotional claims are not clinical proof. Starting prices are not personalized totals; missing currencies, unnamed price rows and incompatible comparison units remain gaps. Daily refresh depends on the source markup and does not guarantee real-time prices.
+
+The recorded evaluation passed all deterministic gates, but strict results were 58/60 single-turn cases and 10/12 conversations. One answer omitted an included imaging study; other failures involve completeness or judge disagreements. The generator and support verifier share a provider and can make correlated mistakes. Labels are AI-curated and source-verified. All cases have been inspected and earlier held-out failures informed fixes, so these are regression results rather than independent validation. See the [evaluation summary](evaluation.md).
+
+The service uses one API worker and shared account secrets, with history shared by people using the same account. Automated retention and distributed scheduling are outside this build. Public HTTPS access and seven-day availability still need verification.
+
+With another week, I would prioritize independent review of price labels, exclusions, Arabic wording and medical boundaries; address the completeness omission; and create a fresh held-out benchmark with broader paraphrase and adversarial coverage. I would then automate source-change audits, measure traffic and memory, and add retention policies, alerts and backup-restore drills. Lead capture or stronger retrieval would follow measured user needs.
