@@ -93,6 +93,38 @@ For public hosting, use a persistent Linux host with Docker Compose, HTTPS and l
 
 Named volumes retain PostgreSQL data, source snapshots and the embedding cache. `docker compose restart api web` preserves completed history; interrupted runs can be retried. Avoid `docker compose down -v` when retaining data. Back up the database and source snapshots, and keep `.env` protected separately. Disable host auto-suspend and monitor the public URL during the required seven-day review period.
 
+## Container releases
+
+Changes go directly to `main`. The [image publishing workflow](.github/workflows/publish-images.yml) runs only when a tag matching `vX.Y.Z` is pushed, such as `v1.0.0`. It verifies that the tagged commit belongs to `main`, then builds and publishes two `linux/amd64` images:
+
+| Image | Build |
+| --- | --- |
+| `ghcr.io/indrabayuu/placidway-assesment-agent` | Backend production `runtime` target; also runs migrations and the refresh worker |
+| `ghcr.io/indrabayuu/placidway-assesment-web` | Built frontend served by Nginx |
+
+Each image receives the release tag, a `sha-<full-commit-SHA>` tag and `latest`. Build caches are separate for the agent and frontend. Publishing uses the repository's automatic `GITHUB_TOKEN` with `packages: write`; application API keys are supplied at runtime. Branch pushes, pull requests and manual dispatch do not trigger this workflow. Prerelease suffixes and leading-zero version components are not supported.
+
+After committing and pushing the intended release to `main`, publish a new version tag:
+
+```sh
+git push -u origin main
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Use a new version for each release. Check both matrix jobs in the repository's Actions tab before deploying; a failed job can leave only one image published for that version. `latest` follows the most recently published release, including a release of an older commit. Deploy matching version tags for the two services.
+
+**One-time public access setup:** GitHub creates new GHCR packages as private, even when their source repository is public. After the first successful publication, open each package under [your GitHub Packages](https://github.com/indrabayuu?tab=packages), then choose **Package settings → Change visibility → Public**. Do this for both images. Subsequent versions retain that package visibility. See [GitHub's package visibility instructions](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility#configuring-visibility-of-packages-for-your-personal-account).
+
+Once public, the images can be pulled without registry credentials:
+
+```sh
+docker pull ghcr.io/indrabayuu/placidway-assesment-agent:v1.0.0
+docker pull ghcr.io/indrabayuu/placidway-assesment-web:v1.0.0
+```
+
+The existing Compose file builds locally; publishing images does not deploy the application or change the public demo URL.
+
 ## Development and checks
 
 Host development requires Python 3.12, uv, Bun and a reachable PostgreSQL database with pgvector. Set `DATABASE_URL` in `.env`; the Compose database has no published host port by default.
