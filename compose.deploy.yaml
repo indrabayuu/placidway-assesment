@@ -1,0 +1,79 @@
+name: placidway-assessment
+
+x-agent: &agent
+  image: ghcr.io/indrabayuu/placidway-assesment-agent:${IMAGE_TAG:?Set IMAGE_TAG to a release tag}
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://placidway:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/placidway
+    DATA_DIR: /app/data
+    REPORTS_DIR: /app/reports
+    LANGSMITH_TRACING: "false"
+    DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+    OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+  volumes:
+    - knowledge-data:/app/data
+    - model-cache:/cache/huggingface
+    - ./reports:/app/reports
+
+services:
+  postgres:
+    image: docker.io/pgvector/pgvector:pg17
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: placidway
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: placidway
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U placidway -d placidway"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  migrate:
+    <<: *agent
+    command: ["migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *agent
+    command: ["serve"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/app/agent/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/live')"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/indrabayuu/placidway-assesment-web:${IMAGE_TAG:?Set IMAGE_TAG to a release tag}
+    ports:
+      - "${PORT:-80}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Restored databases already contain source text and document vectors.
+  # Enable this profile explicitly when automatic refresh is wanted.
+  refresh:
+    <<: *agent
+    profiles: ["refresh"]
+    command: ["worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  knowledge-data:
+  model-cache:

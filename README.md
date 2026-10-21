@@ -126,6 +126,16 @@ docker pull ghcr.io/indrabayuu/placidway-assesment-web:v1.0.0
 
 The existing Compose file builds locally; publishing images does not deploy the application or change the public demo URL.
 
+For deployment from published images, use [compose.deploy.yaml](compose.deploy.yaml) with `IMAGE_TAG` set to a release such as `v1.0.0` and a URL-safe `POSTGRES_PASSWORD` in the server's protected `.env`. This file defaults to web port `80` and PostgreSQL port `5432`. Restore PostgreSQL before starting the application:
+
+```sh
+podman compose -f compose.deploy.yaml up -d postgres
+# Restore the PostgreSQL backup into the empty target database here.
+podman compose -f compose.deploy.yaml up -d
+```
+
+The deployment file keeps automatic refresh behind the `refresh` profile, so startup can reuse restored source text and vectors without ingestion. The owner refresh control remains available. To enable the periodic worker later, run `podman compose -f compose.deploy.yaml --profile refresh up -d refresh`. The query embedding model downloads into a new cache on first use; restoring document vectors does not require recomputing them. Use `sudo podman compose` for a rootful installation, including a server binding privileged port `80`.
+
 ## Development and checks
 
 Host development requires Python 3.12, uv, Bun and a reachable PostgreSQL database with pgvector. Set `DATABASE_URL` in `.env` to match the database credentials and published host port. If another local PostgreSQL service uses port `5432`, set `POSTGRES_PORT=55432` before starting the Compose database and use port `55432` in the host development URL.
