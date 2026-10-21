@@ -40,6 +40,7 @@ The bootstrap script preserves existing repository settings, or imports the pare
 | `REFRESH_INTERVAL_SECONDS=86400` | Daily refresh interval |
 | `PORT=8080`, `COOKIE_SECURE=false` | Local HTTP settings; use `COOKIE_SECURE=true` behind public HTTPS |
 | `POSTGRES_PASSWORD` | Optional Compose database password override |
+| `POSTGRES_PORT=5432` | PostgreSQL host port; use another value, such as `55432`, if occupied |
 
 The judge is needed only for judge-backed evaluations. Chat uses the generation provider and local retrieval. Keep credentials in `.env`; the frontend receives no provider keys. The credential-free [.env.example](.env.example) lists the application settings.
 
@@ -89,7 +90,7 @@ docker compose exec api uv run --no-sync placidway refresh
 
 Refresh validates all seven sources before atomically publishing a corpus. Unchanged pages reuse chunks and embeddings; a failed refresh preserves the previous corpus. Each answer uses one corpus version throughout. Changed content must be audited against the frozen evaluation labels before those evaluations can run again.
 
-For public hosting, use a persistent Linux host with Docker Compose, HTTPS and long-lived SSE support. Set `COOKIE_SECURE=true`, keep the database internal, and build images before reviewer traffic. The included Nginx proxy disables SSE buffering. Run a single API worker, as required by the application's in-process scheduling. `/api/health/live` checks process liveness and `/api/health/ready` checks configuration and corpus readiness; readiness does not test the external generation provider.
+For public hosting, use a persistent Linux host with Docker Compose, HTTPS and long-lived SSE support. Set `COOKIE_SECURE=true` and build images before reviewer traffic. Compose publishes PostgreSQL on host port `5432` by default; set a strong `POSTGRES_PASSWORD` before initializing a network-accessible database and restrict inbound database access to intended clients. Changing this environment variable does not rotate the password in an existing database. Container-to-container connections continue to use `postgres:5432` regardless of `POSTGRES_PORT`. The included Nginx proxy disables SSE buffering. Run a single API worker, as required by the application's in-process scheduling. `/api/health/live` checks process liveness and `/api/health/ready` checks configuration and corpus readiness; readiness does not test the external generation provider.
 
 Named volumes retain PostgreSQL data, source snapshots and the embedding cache. `docker compose restart api web` preserves completed history; interrupted runs can be retried. Avoid `docker compose down -v` when retaining data. Back up the database and source snapshots, and keep `.env` protected separately. Disable host auto-suspend and monitor the public URL during the required seven-day review period.
 
@@ -127,7 +128,7 @@ The existing Compose file builds locally; publishing images does not deploy the 
 
 ## Development and checks
 
-Host development requires Python 3.12, uv, Bun and a reachable PostgreSQL database with pgvector. Set `DATABASE_URL` in `.env`; the Compose database has no published host port by default.
+Host development requires Python 3.12, uv, Bun and a reachable PostgreSQL database with pgvector. Set `DATABASE_URL` in `.env` to match the database credentials and published host port. If another local PostgreSQL service uses port `5432`, set `POSTGRES_PORT=55432` before starting the Compose database and use port `55432` in the host development URL.
 
 ```sh
 cd apps/agent
