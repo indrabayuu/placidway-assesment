@@ -1,0 +1,124 @@
+[
+  {
+    "round": 1,
+    "status": "completed",
+    "failure": "Optional-charge context and long citation IDs failed",
+    "change": "Compact model-facing evidence IDs; preserve add-on exclusion and qualifiers",
+    "reports": [
+      "reports/evals/20261020T173746Z-dev-dense/results.json"
+    ],
+    "passed": 6,
+    "total": 8,
+    "provenance": "Reconstructed from retained original reports; no new improvement rounds were run during contract review."
+  },
+  {
+    "round": 2,
+    "status": "completed",
+    "failure": "Wrong-format money, unnecessary referrals, and omissions",
+    "change": "Deterministic exact price blocks and scoped evidence retrieval",
+    "reports": [
+      "reports/evals/20261020T174043Z-dev-dense/results.json"
+    ],
+    "passed": 25,
+    "total": 40,
+    "provenance": "Reconstructed from retained original reports; no new improvement rounds were run during contract review."
+  },
+  {
+    "round": 3,
+    "status": "completed",
+    "failure": "Procedure price questions selected base programmes",
+    "change": "Select named optional charges and preserve programme constraints",
+    "reports": [
+      "reports/evals/20261020T174544Z-dev-hybrid/results.json"
+    ],
+    "passed": 32,
+    "total": 40,
+    "provenance": "Reconstructed from retained original reports; no new improvement rounds were run during contract review."
+  },
+  {
+    "round": 4,
+    "status": "completed",
+    "failure": "Missing country comparisons and an over-specific itinerary label",
+    "change": "Explicit missing-country caveat and audited development label rationale",
+    "reports": [
+      "reports/evals/20261020T175131Z-dev-hybrid/results.json"
+    ],
+    "passed": 38,
+    "total": 40,
+    "provenance": "Reconstructed from retained original reports; no new improvement rounds were run during contract review."
+  },
+  {
+    "round": 5,
+    "status": "completed",
+    "failure": "Resolver inferred unrequested India/inpatient constraints",
+    "change": "Require user-supplied geography/programme constraints",
+    "reports": [
+      "reports/evals/20261020T175406Z-dev-hybrid/results.json"
+    ],
+    "passed": 39,
+    "total": 40,
+    "provenance": "Reconstructed from retained original reports; no new improvement rounds were run during contract review."
+  },
+  {
+    "round": 6,
+    "status": "completed",
+    "failure": "Initial held-out general-price/action/false-premise failures",
+    "change": "Repair general listing selection and action-specific refusals; disclose holdout use",
+    "reports": [
+      "reports/evals/20261020T175625Z-dev-hybrid/results.json",
+      "reports/evals/20261020T175625Z-heldout-hybrid/results.json"
+    ],
+    "passed": 50,
+    "total": 60,
+    "provenance": "Reconstructed from retained original reports; no new improvement rounds were run during contract review."
+  },
+  {
+    "round": 7,
+    "status": "completed",
+    "failure": "Loose optional-charge matching affected follow-up questions",
+    "change": "Require substantive procedure matches and avoid ordinary consultation false matches",
+    "reports": [
+      "reports/evals/20261020T175849Z-all-hybrid/results.json"
+    ],
+    "passed": 55,
+    "total": 60,
+    "provenance": "Reconstructed from retained original reports; no new improvement rounds were run during contract review."
+  },
+  {
+    "round": 8,
+    "status": "completed",
+    "failure": "Unnamed-row refusal and compound free/surgery premise",
+    "change": "Conservative ambiguity outcome and evidence-backed compound premise correction",
+    "reports": [
+      "reports/evals/20261020T180026Z-all-hybrid/results.json"
+    ],
+    "passed": 57,
+    "total": 60,
+    "provenance": "Reconstructed from retained original reports; no new improvement rounds were run during contract review."
+  },
+  {
+    "round": 9,
+    "status": "completed",
+    "failure": "Completeness variability in remaining factual cases",
+    "change": "Freeze final policy and retain strict judge failures without threshold changes",
+    "reports": [
+      "reports/evals/20261020T180240Z-all-hybrid/results.json"
+    ],
+    "passed": 58,
+    "total": 60,
+    "provenance": "Reconstructed from retained original reports; no new improvement rounds were run during contract review."
+  },
+  {
+    "round": 10,
+    "status": "completed",
+    "failure": "Need a final baseline on the same implementation",
+    "change": "Dense development/previously-held-out and conversation verification; no new tuning",
+    "reports": [
+      "reports/evals/20261020T180356Z-dev-dense/results.json",
+      "reports/evals/20261020T181926Z-heldout-dense/results.json"
+    ],
+    "passed": 59,
+    "total": 60,
+    "provenance": "Reconstructed from retained original reports; no new improvement rounds were run during contract review."
+  }
+]

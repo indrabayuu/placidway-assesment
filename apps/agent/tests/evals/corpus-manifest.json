@@ -1,0 +1,40 @@
+{
+  "corpus_version": "0d861819a886570c59920c8d2f4e5abfac7400c2b36a4a6c27929cf95b3e2992",
+  "sources": {
+    "1": {
+      "url": "https://www.placidway.com/profile/5/Alternative-Cancer-Treatment-by-ITC-Immunity-Therapy-Center",
+      "content_hash": "64ad936b38e45ef7c1b8b5e87546c046307034ea9e8ac6e3ed7b9d89eb6c1226",
+      "extractor_version": "4"
+    },
+    "2": {
+      "url": "https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC",
+      "content_hash": "6cd938cd77b227a59bf0203c61fb1bc512d3706ac5b528b290110b61f431b1ef",
+      "extractor_version": "4"
+    },
+    "3": {
+      "url": "https://www.placidway.com/package/7902/Alternative-Adrenal-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC",
+      "content_hash": "82e2a8aba9ca3508c0e7aebd5007f227137b8233a67e676c0f44b655a7835aed",
+      "extractor_version": "4"
+    },
+    "4": {
+      "url": "https://www.placidway.com/package/7901/Alternative-Anal-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC",
+      "content_hash": "b87ff5a99991828f68a09c5cf3b3011f201af25bbb379b307d4b0b2079d52148",
+      "extractor_version": "4"
+    },
+    "5": {
+      "url": "https://www.placidway.com/profile-videos/5/Alternative-Cancer-Treatment-by-ITC-Immunity-Therapy-Center",
+      "content_hash": "7ce6e48d34bdcf7577662fac4eb13247fc5dad20de99bd9622cdcb7bf0928b9a",
+      "extractor_version": "4"
+    },
+    "6": {
+      "url": "https://www.placidway.com/price-list/5/Alternative-Cancer-Treatment-by-ITC-Immunity-Therapy-Center",
+      "content_hash": "5651367a1db8393c021d3cc5e5b842f8e1e27a11d5c4daecaf9b84cb80d5ee92",
+      "extractor_version": "4"
+    },
+    "7": {
+      "url": "https://www.placidway.com/search-medical-pricings/Alternative-Medicine/All/1",
+      "content_hash": "d6ccea92e360873016dabf3b60066e02ab1158304717e2ee93b3d69ec3b46374",
+      "extractor_version": "4"
+    }
+  }
+}
