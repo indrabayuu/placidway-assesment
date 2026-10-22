@@ -5,14 +5,10 @@ import os
 import pytest
 from deepeval import assert_test
 
-from placidway.config import settings
 from placidway.evaluation.judge import DecisionJudge
 from placidway.evaluation.metrics import make_metrics
 from placidway.evaluation.runner import evaluate_case, load_dataset, resources
 from placidway.evaluation.runner import test_case as to_test_case
-from placidway.llm import Generator
-from placidway.models import ResolvedRequest
-from placidway.prompts import RESOLVE
 
 pytestmark = [
     pytest.mark.eval,
@@ -49,7 +45,12 @@ async def test_automatic_language(name, question, language, eval_capture):
         result = await evaluate_case(workflow, case, DecisionJudge(config))
         eval_capture(result, corpus=workflow.pinned_version)
         assert result["answer"]["response_language"] == language
-        assert result["answer"]["diagnostics"]["request"]["query"].isascii()
+        assert result["answer"]["diagnostics"]["tool_calls"]
+        assert all(
+            call["args"]["query"].isascii()
+            for call in result["answer"]["diagnostics"]["tool_calls"]
+            if call["name"] == "knowledge_base_search"
+        )
         assert all(value for key, value in result["checks"].items() if key != "missing_price_ids")
         assert_test(to_test_case(case, result["answer"]), make_metrics(DecisionJudge(config)))
     finally:
@@ -66,18 +67,18 @@ async def test_automatic_language(name, question, language, eval_capture):
     ],
 )
 async def test_language_choice_with_conversation_history(question, expected):
-    # Exercise the real resolver with an existing language preference and a new turn.
-    request = await Generator(settings()).call(
-        ResolvedRequest,
-        RESOLVE,
-        {
-            "question": question,
-            "history": [
-                {"role": "user", "content": variants[2][1]},
-                {"role": "assistant", "content": "Le prix commence à USD 18,995.", "response_language": "fr"},
-            ],
-        },
-        [1],
-    )
-    assert request.response_language == expected
-    assert request.query.isascii()
+    from uuid import uuid4
+
+    config, db, _, workflow = await resources("hybrid")
+    conversation = str(uuid4())
+    try:
+        await workflow.run(conversation, variants[2][1], "auto", str(uuid4()), str(uuid4()))
+        answer, _ = await workflow.run(conversation, question, "auto", str(uuid4()), str(uuid4()))
+        assert answer["response_language"] == expected
+        assert all(
+            call["args"]["query"].isascii()
+            for call in answer["diagnostics"]["tool_calls"]
+            if call["name"] == "knowledge_base_search"
+        )
+    finally:
+        await db.close()

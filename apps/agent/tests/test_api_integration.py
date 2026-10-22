@@ -8,10 +8,9 @@ from uuid import uuid4
 import httpx
 import pytest
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from test_workflow import PriceRetriever, Resolver
+from test_workflow import FakeGenerator, PriceRetriever, cost, search
 
 from placidway.api import app, lifespan
-from placidway.models import ResolvedRequest
 from placidway.workflow import Workflow
 
 pytestmark = [
@@ -24,14 +23,7 @@ async def test_auth_isolation_idempotent_stream_replay_and_checkpoint_resume():
     async with lifespan(app):
         db = app.state.db
         saver = AsyncPostgresSaver(db.pool)
-        generator = Resolver(
-            ResolvedRequest(
-                query="Adenocarcinoma Cancer outpatient price",
-                treatment="Adenocarcinoma Cancer",
-                programme="outpatient",
-                intent="cost",
-            )
-        )
+        generator = FakeGenerator([search(), cost()])
         app.state.workflow = Workflow(db, PriceRetriever(), generator, saver)
         transport = httpx.ASGITransport(app=app)
         async with (
@@ -82,7 +74,7 @@ async def test_auth_isolation_idempotent_stream_replay_and_checkpoint_resume():
                 assert (await client.get(run["events_url"])).status_code == 404
                 stream = (await owner.get(run["events_url"])).text
                 assert "event: stage" in stream and "event: answer.complete" in stream
-                assert stream.index('"stage": "validate"') < stream.index("event: answer.delta")
+                assert stream.index("event: answer.delta") < stream.index('"stage": "review"')
                 ids = [int(line[4:]) for line in stream.splitlines() if line.startswith("id: ")]
                 replay = (await owner.get(run["events_url"], headers={"Last-Event-ID": str(ids[1])})).text
                 assert all(int(line[4:]) > ids[1] for line in replay.splitlines() if line.startswith("id: "))
@@ -133,7 +125,7 @@ async def test_auth_isolation_idempotent_stream_replay_and_checkpoint_resume():
                 )
                 await db.execute("DELETE FROM runs WHERE conversation_id=%s", (conversation,))
                 await db.execute("DELETE FROM conversations WHERE id=%s", (conversation,))
-                await saver.adelete_thread(conversation)
+                await saver.adelete_thread(f"agent-v2:{conversation}")
 
 
 async def test_readiness_reports_database_failure_as_unavailable(monkeypatch):

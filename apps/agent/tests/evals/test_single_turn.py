@@ -41,6 +41,7 @@ async def test_grounded_response(case, eval_capture):
                     "passed": False,
                     "error": type(exc).__name__,
                     "error_category": "infrastructure_or_protocol",
+                    "diagnostics": getattr(exc, "diagnostics", {}),
                 },
                 corpus=workflow.pinned_version,
             )

@@ -140,6 +140,90 @@ class Retriever:
             for key in sorted(fused, key=lambda key: (-fused[key], key))[:k]
         ]
 
+    async def search_documents(self, query: str, version: str):
+        """Query-driven hybrid retrieval; no resolver-generated entity fields."""
+        import json
+
+        import tiktoken
+
+        scope = treatment_source(query)
+        hits = await self.search(query, version, self.db.config.retrieval_mode, k=5, source_id=scope)
+        ids = list(dict.fromkeys(hit["evidence_id"] for hit in hits))
+        all_prices = [
+            PriceFact.model_validate(row["payload"])
+            for row in await self.db.all(
+                "SELECT payload FROM price_facts WHERE version=%s ORDER BY id", (version,)
+            )
+        ]
+        query_terms = set(lexical(query))
+        generic = {
+            "cancer",
+            "treatment",
+            "therapy",
+            "package",
+            "programme",
+            "program",
+            "price",
+            "cost",
+            "alternative",
+            "clinic",
+            "care",
+            "medical",
+        }
+        prices = [
+            fact
+            for fact in all_prices
+            if fact.evidence_id in ids
+            or (scope and fact.source_id == scope)
+            or bool((set(lexical(fact.treatment)) - generic) & query_terms)
+        ]
+        for fact in prices:
+            for key in [fact.evidence_id, *fact.context_evidence_ids]:
+                if key not in ids:
+                    ids.append(key)
+        if not ids:
+            return [], [], hits
+        rows = await self.db.all(
+            "SELECT payload FROM evidence WHERE version=%s AND id=ANY(%s)", (version, ids)
+        )
+        mapping = {row["payload"]["id"]: Evidence.model_validate(row["payload"]) for row in rows}
+        # Page introductions provide usable context when metadata-heavy tiny chunks
+        # rank highly. Prefer actual explanatory text over treating a title as proof.
+        sources = sorted({section.source_id for section in mapping.values()})
+        context = await self.db.all(
+            "SELECT payload FROM evidence WHERE version=%s AND source_id=ANY(%s)", (version, sources)
+        )
+        introductions = [
+            Evidence.model_validate(row["payload"])
+            for row in context
+            if row["payload"]["heading"].lower().startswith(("about ", "overview"))
+        ]
+        ordered = list(dict.fromkeys([e.id for e in introductions] + ids))
+        mapping.update({section.id: section for section in introductions})
+        encoder = tiktoken.get_encoding("o200k_harmony")
+        selected, retained, used = [], [], 0
+        for key in ordered:
+            section = mapping.get(key)
+            if section is None:
+                continue
+            section_prices = [fact for fact in prices if fact.evidence_id == key]
+            size = len(
+                encoder.encode(
+                    json.dumps(
+                        {
+                            "evidence": section.model_dump(mode="json"),
+                            "prices": [f.model_dump(mode="json") for f in section_prices],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            )
+            if used + size <= 8000:
+                selected.append(section)
+                retained.extend(section_prices)
+                used += size
+        return selected, retained, hits
+
     async def retrieve(self, request: ResolvedRequest, version, mode, expanded=False):
         scope = treatment_source(request.query + " " + request.treatment)
         hits = await self.search(

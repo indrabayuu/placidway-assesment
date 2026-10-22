@@ -1,16 +1,11 @@
 """Contract regression tests for evidence coverage, complete table rows and fail-closed output."""
 
 from types import SimpleNamespace
-from uuid import uuid4
 
 import pytest
-from langgraph.checkpoint.memory import InMemorySaver
-from test_workflow import FakeDatabase, PriceRetriever, Resolver
 
 from placidway.llm import Generator, StructuredOutputError
 from placidway.models import (
-    AnswerDraft,
-    Coverage,
     Evidence,
     EvidenceTable,
     PriceFact,
@@ -19,7 +14,6 @@ from placidway.models import (
 )
 from placidway.retrieval import Embedder, Retriever
 from placidway.sources import SOURCE_URLS
-from placidway.workflow import Workflow
 
 
 class Tokenizer:
@@ -54,56 +48,6 @@ def test_table_chunks_preserve_whole_rows_and_repeat_headers():
     )
 
 
-async def test_coverage_broadens_once_even_when_initial_hits_exist():
-    class MissingResolver(Resolver):
-        checks = 0
-
-        async def call(self, schema, *args):
-            if schema is Coverage:
-                self.checks += 1
-                return Coverage(sufficient=False, missing=["recovery duration"])
-            if schema is AnswerDraft:
-                return AnswerDraft(outcome="unknown", offer_quote=True)
-            return await super().call(schema, *args)
-
-    class TrackingRetriever(PriceRetriever):
-        expanded = []
-
-        async def retrieve(self, *args, **kwargs):
-            self.expanded.append(kwargs.get("expanded", False))
-            return await super().retrieve(*args, **kwargs)
-
-    generator = MissingResolver(ResolvedRequest(query="Adenocarcinoma recovery", intent="general"))
-    retriever = TrackingRetriever()
-    answer, _ = await Workflow(FakeDatabase(), retriever, generator, InMemorySaver()).run(
-        str(uuid4()), "What about recovery time?", "en", str(uuid4()), str(uuid4())
-    )
-    assert retriever.expanded == [False, True] and generator.checks == 2
-    assert answer["outcome"] == "unknown"
-
-
-async def test_invalid_schema_fallback_is_checkpointed_but_network_errors_propagate():
-    class BrokenGenerator:
-        async def call(self, *args):
-            raise StructuredOutputError("unvalidated content")
-
-    workflow = Workflow(FakeDatabase(), PriceRetriever(), BrokenGenerator(), InMemorySaver())
-    key = str(uuid4())
-    answer, _ = await workflow.run(key, "Question", "es", str(uuid4()), str(uuid4()))
-    history = await workflow.history(key)
-    assert len(history) == 2 and history[-1]["content"] == answer["content"]
-    assert "validada" in answer["content"] and "unvalidated content" not in answer["content"]
-
-    class NetworkFailure:
-        async def call(self, *args):
-            raise ConnectionError("provider unavailable")
-
-    with pytest.raises(ConnectionError):
-        await Workflow(FakeDatabase(), PriceRetriever(), NetworkFailure(), InMemorySaver()).run(
-            str(uuid4()), "Question", "en", str(uuid4()), str(uuid4())
-        )
-
-
 async def test_schema_repair_has_a_single_shared_budget():
     class BadClient:
         calls = 0
@@ -113,16 +57,16 @@ async def test_schema_repair_has_a_single_shared_budget():
             return SimpleNamespace(content="not JSON", usage_metadata={})
 
     generator = Generator(SimpleNamespace())
-    generator._client = BadClient()
+    generator._clients["review"] = BadClient()
     # Bypass provider configuration only in this deliberately local client fixture.
     generator.config = SimpleNamespace(generation_ready=True)
     budget = [1]
     with pytest.raises(StructuredOutputError):
         await generator.call(Verification, "rules", {}, budget)
-    assert generator._client.calls == 2 and budget == [0]
+    assert generator._clients["review"].calls == 2 and budget == [0]
     with pytest.raises(StructuredOutputError):
         await generator.call(Verification, "rules", {}, budget)
-    assert generator._client.calls == 3
+    assert generator._clients["review"].calls == 3
 
 
 async def test_cost_price_budget_is_independent_of_text_hit_order():

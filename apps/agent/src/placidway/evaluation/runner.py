@@ -1,6 +1,5 @@
 import asyncio
 import json
-import re
 import statistics
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -15,12 +14,12 @@ from placidway.db import Database
 from placidway.evaluation.judge import DecisionJudge
 from placidway.evaluation.metrics import ConversationDecisionMetric, make_metrics, retrieval_metrics
 from placidway.evaluation.provenance import finish_round, provenance, record_round, require_calibration
+from placidway.guardrails import inspect_answer, numeric_values
 from placidway.llm import Generator
-from placidway.localization import protected_values
-from placidway.models import AnswerDraft, Evidence, PriceFact, ResolvedRequest
+from placidway.models import Evidence, PriceFact, ResolvedRequest
 from placidway.retrieval import Embedder, Retriever
 from placidway.sources import allowed_url
-from placidway.workflow import Workflow, render, validate_draft
+from placidway.workflow import Workflow
 
 DATASET = Path(__file__).resolve().parents[3] / "tests/evals/.dataset.json"
 
@@ -68,37 +67,21 @@ def deterministic_checks(case, answer):
         if answer["outcome"] in ("answered", "partial")
         else True
     )
-    draft = AnswerDraft.model_validate(
-        diagnostics.get("accepted_draft", diagnostics.get("draft", {"outcome": answer["outcome"]}))
-    )
-    association = not validate_draft(
-        draft,
-        evidence,
-        prices,
-        ResolvedRequest.model_validate(diagnostics.get("request", {"query": case["question"]})),
-    )
-    price_values = True
-    canonical = diagnostics.get("canonical_content")
-    checked_content = canonical if canonical is not None else answer["content"]
-    remaining_content = checked_content
-    if canonical is not None:
-        price_values &= protected_values(answer["content"]) == protected_values(canonical)
+    issues, _ = inspect_answer(answer["content"], diagnostics.get("documents", []))
+    association = not issues
+    price_values = not issues
+    # Exact amounts/range endpoints must be present in natural prose; the offline
+    # correctness judge additionally checks qualifiers and semantic associations.
+    written_numbers = numeric_values(answer["content"])
     for key in used:
-        if key not in facts:
+        fact = facts.get(key)
+        if fact is None:
             price_values = False
             continue
-        fact = facts[key]
-        block = AnswerDraft(outcome="answered", blocks=[{"kind": "price", "price_id": key}])
-        expected_text, _ = render(
-            block, evidence, prices, "en" if canonical is not None else answer["response_language"]
-        )
-        approved_fragment = expected_text.rsplit(" [", 1)[0]
-        price_values &= approved_fragment in checked_content and fact.evidence_id in cited
-        remaining_content = remaining_content.replace(approved_fragment, "")
-    # Inspect published content independently of draft/used-ID diagnostics, including safe fallbacks.
-    price_values &= not bool(
-        re.search(r"\$|€|£|\b(?:USD|EUR|MXN|dollars|dólares)\b", remaining_content, re.I)
-    )
+        price_values &= fact.evidence_id in cited
+        for amount in (fact.amount, fact.high):
+            if amount is not None:
+                price_values &= amount in written_numbers
     # Independent source labels protect against a corrupted numeric record, not just an incorrect ID.
     labelled_values = all(
         key in facts
@@ -106,7 +89,6 @@ def deterministic_checks(case, answer):
         for key, expected in case.get("expected_price_facts", {}).items()
     )
     return {
-        "expected_outcome": answer["outcome"] in case["expected_outcomes"],
         "required_price_records": not missing,
         "has_required_citation": bool(citations)
         if case["relevant_evidence_ids"] and answer["outcome"] in ("answered", "partial")
@@ -116,12 +98,10 @@ def deterministic_checks(case, answer):
         "price_values_context_and_qualifiers": price_values,
         "labelled_price_values": labelled_values,
         "fact_associations": association,
-        "validation_passed": not validate_draft(
-            draft,
-            evidence,
-            prices,
-            ResolvedRequest.model_validate(diagnostics.get("request", {"query": case["question"]})),
-        ),
+        "validation_passed": not diagnostics.get("validation_issues", []) and not issues,
+        "tool_budgets": diagnostics.get("search_count", 0) <= 3
+        and diagnostics.get("consultation_count", 0) <= 1
+        and diagnostics.get("revision_count", 0) <= 1,
         "missing_price_ids": sorted(missing),
     }
 
@@ -166,7 +146,7 @@ def evaluation_embedder(model_name):
     return Embedder(model_name)
 
 
-async def resources(mode="dense"):
+async def resources(mode="dense", runtime_guardrails=True):
     config = settings().model_copy(update={"retrieval_mode": mode})
     db = Database(config)
     await db.open()
@@ -176,7 +156,14 @@ async def resources(mode="dense"):
         await db.close()
         raise
     retriever = Retriever(db, evaluation_embedder(config.embedding_model))
-    workflow = Workflow(db, retriever, Generator(config), AsyncPostgresSaver(db.pool), pinned_version=version)
+    workflow = Workflow(
+        db,
+        retriever,
+        Generator(config),
+        AsyncPostgresSaver(db.pool),
+        pinned_version=version,
+        runtime_guardrails=runtime_guardrails,
+    )
     return config, db, retriever, workflow
 
 

@@ -110,32 +110,9 @@ class ResolvedRequest(BaseModel):
     programme_mention: str = ""
 
 
-class LocalizedAnswer(BaseModel):
-    content: str = Field(min_length=1)
-
-
-class AnswerBlock(BaseModel):
-    kind: Literal["text", "price"]
-    text: str = ""
-    evidence_ids: list[str] = Field(default_factory=list)
-    price_id: str = ""
-
-
-class AnswerDraft(BaseModel):
-    outcome: Outcome
-    blocks: list[AnswerBlock] = Field(default_factory=list)
-    offer_quote: bool = False
-    medical_disclaimer: bool = False
-
-
 class Verification(BaseModel):
     supported: bool
     issues: list[str] = Field(default_factory=list)
-
-
-class Coverage(BaseModel):
-    sufficient: bool
-    missing: list[str] = Field(default_factory=list)
 
 
 class Answer(BaseModel):
@@ -146,3 +123,9 @@ class Answer(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
     version: str | None = None
     diagnostics: dict = Field(default_factory=dict)
+
+
+class ReviewVerdict(Verification):
+    response_language: Language
+    outcome: Outcome
+    used_price_ids: list[str] = Field(default_factory=list)

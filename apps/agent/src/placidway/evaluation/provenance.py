@@ -25,13 +25,15 @@ def provenance(config, corpus):
         "extractor_version": EXTRACTOR_VERSION,
         "index_version": INDEX_VERSION,
         "prompt_version": fingerprint(
-            {
-                name: getattr(prompts, name)
-                for name in ("RESOLVE", "COVERAGE", "DRAFT", "VERIFY", "LOCALIZE", "VERIFY_LOCALIZATION")
-            }
+            {name: prompts.load_system_prompt(name.lower()) for name in ("MAIN", "ADVISOR", "REVIEW")}
         ),
         "rubric_version": rubric_version(),
         "generation_model": config.openai_model,
+        "reasoning_effort": {
+            "main": config.main_reasoning_effort,
+            "advisor": config.helper_reasoning_effort,
+            "review": config.helper_reasoning_effort,
+        },
         "judge_model": config.openrouter_model,
         "judge_threshold": 0.8,
         "embedding_model": config.embedding_model,

@@ -51,10 +51,14 @@ test('secret login, Arabic response and streaming without crypto.randomUUID', as
       ['1', 'run.started', { run_id: 'run-1', conversation_id: 'conversation-1' }],
       ['2', 'stage', { stage: 'coverage', message: 'Checking requested facts against the trusted care guide.' }],
     ] as const : [
-      ['3', 'answer.start', { message_id: 'assistant-1', response_language: 'ar' }],
-      ['4', 'answer.delta', { text: 'Unvalidated partial response.' }],
-      ['5', 'answer.delta', { text: ' More incoming words.' }],
-      ['6', 'answer.complete', {
+      ['3', 'answer.start', { message_id: 'assistant-1', candidate_id: 'candidate-1', response_language: 'ar' }],
+      ['4', 'thinking.delta', { candidate_id: 'candidate-1', text: 'Comparing the documented programme conditions.' }],
+      ['5', 'answer.delta', { candidate_id: 'candidate-1', text: 'Unvalidated partial response.' }],
+      ['6', 'answer.rejected', { candidate_id: 'candidate-1', reason: 'Revising against sources' }],
+      ['7', 'answer.start', { message_id: 'assistant-1', candidate_id: 'candidate-2', response_language: 'ar' }],
+      ['8', 'answer.delta', { candidate_id: 'candidate-2', text: ' More incoming words.' }],
+      ['9', 'review.complete', { candidate_id: 'candidate-2', accepted: true }],
+      ['10', 'answer.complete', {
         message: {
           id: 'assistant-1', role: 'assistant', content: 'الإجابة النهائية المعتمدة.', created_at: now,
           citations: [{ id: 'source-1', url: 'https://example.org/guide', title: 'Trusted care guide', section: 'Planning' }],
@@ -98,6 +102,10 @@ test('secret login, Arabic response and streaming without crypto.randomUUID', as
   const arabicAnswer = page.locator('.assistant-bubble[dir="rtl"]');
   await expect(arabicAnswer).toContainText('الإجابة النهائية المعتمدة');
   await expect(arabicAnswer).not.toContainText('Unvalidated partial response');
+  const thinking = page.locator('.thinking-panel');
+  await thinking.locator('summary').click();
+  await expect(thinking).toContainText('Comparing the documented programme conditions.');
+  await expect(page.locator('.response-status')).toHaveCount(0);
   await expect(page.getByRole('link', { name: /Trusted care guide/ })).toHaveAttribute('rel', 'noopener noreferrer');
 
   const completedActivityToggle = page.getByRole('button', { name: /How this answer came together/ });

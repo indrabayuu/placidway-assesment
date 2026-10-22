@@ -55,6 +55,7 @@ async def test_conversation_context(case, eval_capture):
                     "passed": False,
                     "error": type(exc).__name__,
                     "error_category": "infrastructure_or_protocol",
+                    "diagnostics": getattr(exc, "diagnostics", {}),
                 },
                 kind="conversation",
                 corpus=workflow.pinned_version,

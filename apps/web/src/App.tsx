@@ -40,6 +40,10 @@ type Message = {
   created_at: string;
   citations: Citation[];
   activity: Activity[];
+  thinking?: string;
+  candidate_id?: string;
+  provisional?: boolean;
+  review_status?: string;
   outcome?: string;
   response_language?: string;
 };
@@ -347,7 +351,7 @@ function App() {
       const data = parseEvent<Activity>(event);
       if (!data) return;
       setMessages((current) => {
-        const assistant = [...current].reverse().find((message) => message.role === 'assistant' && message.id.startsWith('draft-assistant-'));
+        const assistant = [...current].reverse().find((message) => message.role === 'assistant' && message.id === `draft-assistant-${activeRun.id}`);
         const nextActivity = [...(assistant?.activity ?? []), data];
         if (assistant) return current.map((message) => message.id === assistant.id ? { ...message, activity: nextActivity } : message);
         return [...current, {
@@ -363,42 +367,52 @@ function App() {
     source.addEventListener('answer.start', (event) => {
       remember(event);
       if (selectedIdRef.current !== activeRun.conversation_id) return;
-      const data = parseEvent<{ message_id: string; response_language: string }>(event);
+      const data = parseEvent<{ message_id: string; candidate_id?: string; response_language: string }>(event);
       if (!data) return;
       setMessages((current) => {
-        const existing = current.find((message) => message.id.startsWith('draft-assistant-'));
-        const activity = existing?.activity ?? [];
+        const id = `draft-assistant-${activeRun.id}`;
+        const existing = current.find((message) => message.id === id);
         const assistant: Message = {
-          id: data.message_id,
-          role: 'assistant',
-          content: '',
-          created_at: new Date().toISOString(),
-          citations: [],
-          activity,
+          id, role: 'assistant', content: '', created_at: existing?.created_at ?? new Date().toISOString(),
+          citations: [], activity: existing?.activity ?? [], thinking: existing?.thinking ?? '',
+          candidate_id: data.candidate_id, provisional: true, review_status: 'Provisional',
           response_language: data.response_language,
         };
-        return [...current.filter((message) => !message.id.startsWith('draft-assistant-')), assistant];
+        return [...current.filter((message) => message.id !== id), assistant];
       });
     });
-    source.addEventListener('answer.delta', (event) => {
+    const appendDelta = (event: Event, channel: 'content' | 'thinking') => {
       remember(event);
       if (selectedIdRef.current !== activeRun.conversation_id) return;
-      const data = parseEvent<{ text: string }>(event);
+      const data = parseEvent<{ text: string; candidate_id?: string }>(event);
       if (!data || typeof data.text !== 'string') return;
       setMessages((current) => {
-        const assistantIndex = current.reduce((last, message, index) => message.role === 'assistant' ? index : last, -1);
-        if (assistantIndex < 0) {
-          return [...current, {
-            id: `draft-assistant-${activeRun.id}`,
-            role: 'assistant',
-            content: data.text,
-            created_at: new Date().toISOString(),
-            citations: [],
-            activity: [],
-          }];
-        }
-        return current.map((message, index) => index === assistantIndex ? { ...message, content: message.content + data.text } : message);
+        const id = `draft-assistant-${activeRun.id}`;
+        const existing = current.find((message) => message.id === id);
+        if (existing?.candidate_id && data.candidate_id && existing.candidate_id !== data.candidate_id) return current;
+        if (!existing) return [...current, {
+          id, role: 'assistant', content: channel === 'content' ? data.text : '',
+          thinking: channel === 'thinking' ? data.text : '', created_at: new Date().toISOString(),
+          citations: [], activity: [], provisional: true, candidate_id: data.candidate_id,
+        }];
+        return current.map((message) => message.id === id ? { ...message, [channel]: (message[channel] ?? '') + data.text } : message);
       });
+    };
+    source.addEventListener('answer.delta', (event) => appendDelta(event, 'content'));
+    source.addEventListener('thinking.delta', (event) => appendDelta(event, 'thinking'));
+    source.addEventListener('answer.rejected', (event) => {
+      remember(event);
+      const data = parseEvent<{ candidate_id: string; reason: string }>(event);
+      if (!data || selectedIdRef.current !== activeRun.conversation_id) return;
+      setMessages((current) => current.map((message) => message.candidate_id === data.candidate_id
+        ? { ...message, review_status: data.reason } : message));
+    });
+    source.addEventListener('review.complete', (event) => {
+      remember(event);
+      const data = parseEvent<{ candidate_id: string }>(event);
+      if (!data || selectedIdRef.current !== activeRun.conversation_id) return;
+      setMessages((current) => current.map((message) => message.candidate_id === data.candidate_id
+        ? { ...message, review_status: 'Source checks passed' } : message));
     });
     source.addEventListener('answer.complete', (event) => {
       remember(event);
@@ -406,10 +420,13 @@ function App() {
       const data = parseEvent<{ message: Message }>(event);
       if (!data?.message) return;
       source.close();
-      setMessages((current) => [
-        ...current.filter((message) => message.role !== 'assistant' || (!message.id.startsWith('draft-assistant-') && message.id !== data.message.id)),
-        data.message,
-      ]);
+      setMessages((current) => {
+        const provisional = current.find((message) => message.id === `draft-assistant-${activeRun.id}`);
+        return [
+          ...current.filter((message) => message.role !== 'assistant' || (!message.id.startsWith('draft-assistant-') && message.id !== data.message.id)),
+          { ...data.message, thinking: provisional?.thinking, provisional: false },
+        ];
+      });
       setActiveRun(null);
       setRunError(null);
       setFailedPrompt('');
@@ -432,6 +449,7 @@ function App() {
       setFailedPrompt(data?.retryable ? prompt : '');
       setRunError({ message, retryable: !!data?.retryable });
       setActiveRun(null);
+      setMessages((current) => current.map((message) => message.provisional ? { ...message, review_status: 'Not completed' } : message));
       setConnectionState('connected');
     });
     source.onerror = () => {
@@ -872,8 +890,6 @@ function isRtlLanguage(language?: string): boolean {
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
   const rtl = !isUser && isRtlLanguage(message.response_language);
-  const outcome = message.outcome?.trim();
-  const visibleOutcome = outcome && !['known', 'unknown'].includes(outcome.toLowerCase()) ? outcome : '';
   const safeCitations = message.citations
     .map((citation) => ({ citation, url: safeCitationUrl(citation.url) }))
     .filter((item): item is { citation: Citation; url: string } => item.url !== null);
@@ -882,10 +898,14 @@ function MessageBubble({ message }: { message: Message }) {
       {!isUser && <span className="assistant-avatar" aria-hidden="true"><HeartPulse size={16} /></span>}
       <div className={`message-content-wrap ${isUser ? 'user-content-wrap' : ''}`}>
         <div className={`message-label ${isUser ? 'user-label' : ''}`}>{isUser ? 'You' : 'PlacidWay guide'}<span>·</span><time dateTime={message.created_at}>{formatTime(message.created_at)}</time></div>
+        {!isUser && message.thinking && <details className="thinking-panel">
+          <summary>Thinking <span>· provisional</span></summary>
+          <div className="thinking-content" dir="auto">{message.thinking}</div>
+        </details>}
+        {!isUser && message.provisional && <p className="response-status">AI Response · {message.review_status || 'Provisional'}</p>}
         <div className={`message-bubble ${isUser ? 'user-bubble' : 'assistant-bubble'}`} dir={rtl ? 'rtl' : 'auto'} lang={message.response_language || undefined}>
           {message.content ? <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown></div> : <span className="assistant-thinking"><i /><i /><i /><span className="sr-only">Preparing response</span></span>}
         </div>
-        {!isUser && visibleOutcome && <p className="answer-outcome"><Check size={13} /> {visibleOutcome}</p>}
         {!isUser && safeCitations.length > 0 && <div className="source-list" aria-label="Sources"><p className="source-heading"><FileText size={13} /> Sources that may help</p><div className="source-cards">{safeCitations.map(({ citation, url }) => <a key={citation.id} className="source-card" href={url} target="_blank" rel="noopener noreferrer"><span className="source-icon"><FileText size={15} /></span><span><strong>{citation.title}</strong><small>{citation.section || 'PlacidWay resource'}</small></span><ArrowUpRight /></a>)}</div></div>}
       </div>
     </article>

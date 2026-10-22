@@ -4,9 +4,8 @@ import pytest
 
 from placidway.ingestion import extract_page, parse_money
 from placidway.llm import parse_json, public_content
-from placidway.models import AnswerBlock, AnswerDraft, Evidence, PriceFact, ResolvedRequest, Verification
+from placidway.models import Evidence, PriceFact, Verification
 from placidway.sources import SOURCE_URLS, allowed_url, treatment_source
-from placidway.workflow import render, validate_draft
 
 
 def test_money_ranges_and_decimal_precision():
@@ -55,38 +54,6 @@ def test_comments_and_related_recommendations_are_not_evidence():
     assert "dental implant" not in text
 
 
-def test_numeric_cross_reference_requires_explicitly_cited_support():
-    included = evidence().model_copy(update={"id": "included", "text": "One prescribed scan is included."})
-    excluded = evidence().model_copy(
-        update={"id": "excluded", "text": "Additional imaging beyond the included diagnostic is excluded."}
-    )
-    draft = AnswerDraft(
-        outcome="answered",
-        blocks=[
-            AnswerBlock(kind="text", text="One prescribed scan is included.", evidence_ids=["included"]),
-            AnswerBlock(
-                kind="text",
-                text="Imaging beyond the one prescribed scan is excluded.",
-                evidence_ids=["excluded"],
-            ),
-        ],
-    )
-    request = ResolvedRequest(query="What is included?")
-    assert not validate_draft(draft, [included, excluded], [], request)
-    draft.blocks[1].text = "Fifty-five additional scans are included: 55."
-    assert "unsupported_numeric_claim" in validate_draft(draft, [included, excluded], [], request)
-
-
-def test_category_price_keeps_estimate_and_scope_limit():
-    price = fact().model_copy(
-        update={"qualifier": "starting_estimate", "kind": "category_range", "high": Decimal("30000")}
-    )
-    draft = AnswerDraft(outcome="answered", blocks=[AnswerBlock(kind="price", price_id=price.id)])
-    text, _ = render(draft, [evidence()], [price], "en")
-    assert "Estimated starting category range" in text
-    assert "not a quote for a specific cancer programme" in text
-
-
 def test_reasoning_is_removed_before_json_or_display():
     content = '<reasoning>Private internal text</reasoning>{"supported":true,"issues":[]}'
     assert "Private" not in public_content(content)
@@ -117,67 +84,6 @@ def fact(source=2):
         duration="3 Weeks",
         qualifier="starting_from",
     )
-
-
-def test_correct_number_wrong_treatment_fails():
-    draft = AnswerDraft(outcome="answered", blocks=[AnswerBlock(kind="price", price_id="p1")])
-    issues = validate_draft(
-        draft, [evidence(3)], [fact(3)], ResolvedRequest(query="Adenocarcinoma Cancer price")
-    )
-    assert "wrong_treatment_price_source" in issues
-
-
-def test_programme_mismatch_and_unstructured_price_rejected():
-    draft = AnswerDraft(
-        outcome="answered",
-        blocks=[
-            AnswerBlock(kind="price", price_id="p1"),
-            AnswerBlock(kind="text", text="It costs USD 50", evidence_ids=["e1"]),
-        ],
-    )
-    issues = validate_draft(
-        draft, [evidence()], [fact()], ResolvedRequest(query="price", programme="inpatient")
-    )
-    assert {"wrong_programme", "monetary_text_must_use_price_record"} <= set(issues)
-
-
-def test_server_renders_currency_qualifier_and_programme_in_spanish():
-    draft = AnswerDraft(outcome="answered", blocks=[AnswerBlock(kind="price", price_id="p1")])
-    text, citations = render(draft, [evidence()], [fact()], "es")
-    assert all(term in text for term in ("Desde", "USD 18,995", "ambulatorio", "3 semanas"))
-    assert citations[0]["url"] == SOURCE_URLS[2]
-
-
-def test_generic_listing_does_not_establish_a_specific_programme():
-    listing = fact().model_copy(update={"programme": "", "kind": "listing"})
-    draft = AnswerDraft(outcome="answered", blocks=[AnswerBlock(kind="price", price_id="p1")])
-    assert "wrong_programme" in validate_draft(
-        draft, [evidence()], [listing], ResolvedRequest(query="price", programme="outpatient")
-    )
-
-
-def test_wrong_clinic_untrusted_links_and_unsupported_numbers_rejected():
-    draft = AnswerDraft(
-        outcome="answered",
-        blocks=[
-            AnswerBlock(kind="price", price_id="p1"),
-            AnswerBlock(
-                kind="text", text="Recover in 99 days. [Help](https://evil.example)", evidence_ids=["e1"]
-            ),
-        ],
-    )
-    issues = validate_draft(draft, [evidence()], [fact()], ResolvedRequest(query="price", clinic="Fizikon"))
-    assert {"wrong_clinic", "unsupported_answer_url", "unsupported_numeric_claim"} <= set(issues)
-
-
-def test_variable_prices_and_fractional_range_endpoints_preserve_context():
-    variable = fact().model_copy(update={"amount": None, "qualifier": "varies", "kind": "addon"})
-    draft = AnswerDraft(outcome="answered", blocks=[AnswerBlock(kind="price", price_id="p1")])
-    text, _ = render(draft, [evidence()], [variable], "en")
-    assert "Price varies" in text and "USD 0" not in text
-    precise = fact().model_copy(update={"amount": Decimal("100.25"), "high": Decimal("200.75")})
-    text, _ = render(draft, [evidence()], [precise], "en")
-    assert "100.25–200.75" in text
 
 
 def test_url_allowlist_is_exact():

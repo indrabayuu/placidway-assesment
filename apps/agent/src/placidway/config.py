@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     openai_base_url: str = ""
     openai_model: str = ""
     openai_api_key: str = Field(default="", repr=False)
-    openai_reasoning_effort: str = "low"
+    main_reasoning_effort: Literal["medium"] = "medium"
+    helper_reasoning_effort: Literal["high"] = "high"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model: str = "inception/mercury-decide:free"
     openrouter_api_key: str = Field(default="", repr=False)

@@ -8,8 +8,6 @@ from placidway.config import Settings
 from placidway.evaluation.judge import DecisionJudge, retry_delay
 from placidway.evaluation.provenance import record_round, require_calibration
 from placidway.evaluation.runner import deterministic_checks, load_dataset
-from placidway.models import AnswerBlock, AnswerDraft, ResolvedRequest
-from placidway.workflow import render
 
 
 def test_dataset_has_metadata_and_disjoint_paraphrase_families():
@@ -30,8 +28,8 @@ def test_dataset_has_metadata_and_disjoint_paraphrase_families():
 def test_price_gate_checks_values_and_citation_identity_not_just_ids():
     price = fact()
     section = evidence()
-    draft = AnswerDraft(outcome="answered", blocks=[AnswerBlock(kind="price", price_id=price.id)])
-    text, citations = render(draft, [section], [price], "en")
+    text = f"Starting from USD 18,995 for the outpatient programme. [E1]({section.url})"
+    citations = [{"id": section.id, "url": section.url, "title": section.title, "section": section.heading}]
     case = {
         "question": "Price?",
         "required_price_ids": [price.id],
@@ -46,8 +44,14 @@ def test_price_gate_checks_values_and_citation_identity_not_just_ids():
         "response_language": "en",
         "citations": citations,
         "diagnostics": {
-            "draft": draft.model_dump(),
-            "request": ResolvedRequest(query="Price").model_dump(),
+            "documents": [
+                {
+                    "key": "test:e1",
+                    "label": "E1",
+                    "evidence": section.model_dump(),
+                    "prices": [price.model_dump(mode="json")],
+                }
+            ],
             "prices": [price.model_dump(mode="json")],
             "evidence": [section.model_dump()],
             "used_price_ids": [price.id],

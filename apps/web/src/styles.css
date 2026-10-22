@@ -385,3 +385,9 @@ button:disabled { cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+.thinking-panel { margin: 8px 0 12px; border: 1px solid var(--border, #dce5e4); border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #526966; }
+.thinking-panel summary { cursor: pointer; font-weight: 600; }
+.thinking-panel summary span { font-weight: 400; }
+.thinking-content { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow-y: auto; margin-top: 10px; line-height: 1.6; }
+.response-status { color: #526966; font-size: 12px; margin: 6px 0; }

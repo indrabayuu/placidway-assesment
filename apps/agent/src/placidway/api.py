@@ -196,6 +196,9 @@ async def execute_run(application, row):
         async def stage(data):
             await event(db, key, "stage", data)
 
+        async def stream(name, data):
+            await event(db, key, name, data)
+
         try:
             answer, message = await application.state.workflow.run(
                 str(row["conversation_id"]),
@@ -204,16 +207,8 @@ async def execute_run(application, row):
                 str(row["client_message_id"]),
                 str(key),
                 stage,
+                stream,
             )
-            await event(
-                db,
-                key,
-                "answer.start",
-                {"message_id": message["id"], "response_language": answer["response_language"]},
-            )
-            content = answer["content"]
-            for start in range(0, len(content), 100):
-                await event(db, key, "answer.delta", {"text": content[start : start + 100]})
             async with db.pool.connection() as connection:
                 async with connection.transaction():
                     await connection.execute(
