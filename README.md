@@ -1,6 +1,6 @@
 # PlacidWay website knowledge chatbot
 
-A multilingual chat assistant for seven approved PlacidWay pages. It answers with source citations, supports follow-ups, and preserves price context. This repository contains the agent-v2 refactor; it has **not** been deployed. The public demo still runs the previous release.
+A multilingual chat assistant for seven approved PlacidWay pages. It answers with source citations, supports follow-ups, and preserves price context. Agent v2 is deployed to the public demo as release `v2.0.0`.
 
 ## Assessment
 
@@ -72,7 +72,7 @@ Refresh validates all seven sources before publishing a new corpus version. Fail
 
 For hosting, use a persistent Linux server, HTTPS, a protected `.env`, and long-lived SSE support. Set `COOKIE_SECURE=true`, protect the PostgreSQL port, and run one API worker. The readiness endpoint checks configuration and corpus availability, not the generation provider.
 
-The tag-triggered GitHub Actions workflow publishes agent and web images to GHCR. Tag a commit on `main` as `vX.Y.Z`, then deploy matching images with [compose.deploy.yaml](compose.deploy.yaml) and `IMAGE_TAG`. After the first publication, make both GHCR packages public if the server will pull without registry credentials. The current server runs release `v1.0.2`; the refactor in this repository has not been deployed.
+The tag-triggered GitHub Actions workflow publishes agent and web images to GHCR. Tag a commit on `main` as `vX.Y.Z`, then deploy matching images with [compose.deploy.yaml](compose.deploy.yaml) and `IMAGE_TAG`. After the first publication, make both GHCR packages public if the server will pull without registry credentials. The current server runs release `v2.0.0` from `/home/ubuntu/placidway-assesment` under rootful Podman. Automatic content refresh remains disabled. The rollout preserved PostgreSQL credentials, existing user history, and the corpus; the evaluation caveats below remain relevant to this release.
 
 PostgreSQL volumes hold corpus, conversation and checkpoint data. Back up the database and source snapshots; avoid `docker compose down -v` if retaining data. The deployment Compose file keeps scheduled refresh behind its `refresh` profile.
 
